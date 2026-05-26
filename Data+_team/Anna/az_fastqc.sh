@@ -15,7 +15,7 @@
 #SBATCH --mail-user=az199@duke.edu
 
 #Load modules
-module load FastQC
+module load fastqc
 
 #establish paths
 raw_input="/work/clh162/OysterRNA24/rawreads"
@@ -26,3 +26,6 @@ mkdir -p $fastqc_output
 
 #run data 
 fastqc -t 8 $raw_input/*.fastq.gz -o $fastqc_output
+
+#print completion ticket
+echo "FastQC Completed"

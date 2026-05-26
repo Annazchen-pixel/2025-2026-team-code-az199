@@ -26,3 +26,6 @@ mkdir -p $multiqc_output
 
 #run data 
 multiqc $fastqc_output -o $multiqc_output
+
+#print completion ticket
+echo "MultiQC Completed"
