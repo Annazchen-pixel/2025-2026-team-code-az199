@@ -557,7 +557,7 @@ server <- function(input, output, session){
     p %>% layout(
       title = input$custom_title,
       xaxis = list(
-        title = "Date & Time",
+        title = "Date",
         tickformat = "%b %d\n%H:%M",
         hoverformat = "%b %d %H:%M"
       ),
