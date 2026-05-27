@@ -1,20 +1,22 @@
 #!/bin/bash -e
 
-#given job descriptions/parameters
-#SBATCH --job-name=azmultiqc_out
+##Given job descriptions/parameters
+#SBATCH --job-name=azfastqc_out
 #SBATCH --mem=16G
-#SBATCH --partition=common
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
+#SBATCH --array=1-36 #read the 36 files at the same time
 
-#SBATCH -o azmultiqc-%j.out #saves output to this file, replace %j w/ unique job ID
-#SBATCH -e azmultiqc-%j.err #saves error to the file, replace %j w/ unique job ID
+#SBATCH -o azfastqc-%a.out #saves output to this file, replace %a w/ unique array ID
+#SBATCH -e azfastqc-%a.err #saves error to the file, replace %a w/ unique array ID
 
 #SBATCH --mail-type=ALL #auto-send email on all updates
 #SBATCH --mail-user=az199@duke.edu
 
-#Load modules
+#Load modules and enviroments
+source /hpc/home/az199/miniconda3/etc/profile.d/conda.sh
+conda activate rna_seq
 module load multiqc
 
 #establish paths
@@ -29,3 +31,5 @@ multiqc $fastqc_output -o $multiqc_output
 
 #print completion ticket
 echo "MultiQC Completed"
+
+conda deactivate
