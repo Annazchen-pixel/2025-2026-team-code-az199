@@ -1,19 +1,45 @@
 #!/bin/bash -e
 
-#given job descriptions/parameters
-#SBATCH --job-name=trim_out
-#SBATCH --mem=32G
+##Given job descriptions/parameters
+#SBATCH --job-name=azfastqc_out
+#SBATCH --mem=16G
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=7-00:00:00
+#SBATCH --array=1-36 #read the 36 files at the same time
 
-#SBATCH -o trim_output-%j.out #saves output to this file, replace %j w/ unique job ID
-#SBATCH -e trim_output-%j.err #saves error to the file, replace %j w/ unique job ID
+#SBATCH -o azfastqc-%a.out #saves output to this file, replace %a w/ unique array ID
+#SBATCH -e azfastqc-%a.err #saves error to the file, replace %a w/ unique array ID
 
 #SBATCH --mail-type=ALL #auto-send email on all updates
 #SBATCH --mail-user=az199@duke.edu
 
-#create new conda environment and install trim-galore
-conda create -n rna_seq -c bioconda -c conda-forge trim-galore fastqc multiqc
-#Load modules
-module load fastqc
+#Load environment/modules
+source /hpc/home/az199/miniconda3/etc/profile.d/conda.sh
+conda activate rna_seq
+module load mtrim-galore
+
+#Establish paths
+raw_input="/work/clh162/OysterRNA24/rawreads"
+trim_out="/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/trim_results"
+
+#Create folders
+mkdir -p $trim_out
+
+##Decipher raw inputs and paths for each read sample
+#1. generates rsamples from the rawreads for R1, read, pipe, strip away suffix
+#2. define the index for each rsample in the array through job passing
+#3. define R1 and R2 for the sample
+rsamples=($(ls ${raw_input}/*_R1_001.fastq.gz | sed 's/R1_001.fastq.gz//' | xargs -n 1 basename))
+rsample=${rsamples[$SLURM_ARRAY_TASK_ID-1]}
+r1=${raw_input}/${rsample}_R1_001.fastq.gz
+r2=${raw_input}/${rsample}_R2_001.fastq.gz
+
+#Trim-galore instructions
+trim_galore \
+    --paired ${r1} ${r2} \
+    --quality 30 \
+    --output_dir $trim_out
+
+#Print completion statement
+echo "Trimming Completed for ${rsample}

@@ -6,7 +6,6 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
-#SBATCH --array=1-36 #read the 36 files at the same time
 
 #SBATCH -o azfastqc-%a.out #saves output to this file, replace %a w/ unique array ID
 #SBATCH -e azfastqc-%a.err #saves error to the file, replace %a w/ unique array ID
