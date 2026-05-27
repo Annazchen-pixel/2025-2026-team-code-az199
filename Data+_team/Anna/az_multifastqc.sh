@@ -1,14 +1,14 @@
 #!/bin/bash -e
 
 ##Given job descriptions/parameters
-#SBATCH --job-name=azfastqc_out
+#SBATCH --job-name=az_multiqc_out
 #SBATCH --mem=16G
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
 
-#SBATCH -o azfastqc-%a.out #saves output to this file, replace %a w/ unique array ID
-#SBATCH -e azfastqc-%a.err #saves error to the file, replace %a w/ unique array ID
+#SBATCH -o azmultiqc-%a.out #saves output to this file, replace %a w/ unique array ID
+#SBATCH -e azmultiqc-%a.err #saves error to the file, replace %a w/ unique array ID
 
 #SBATCH --mail-type=ALL #auto-send email on all updates
 #SBATCH --mail-user=az199@duke.edu

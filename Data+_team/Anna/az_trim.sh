@@ -1,15 +1,15 @@
 #!/bin/bash -e
 
 ##Given job descriptions/parameters
-#SBATCH --job-name=azfastqc_out
+#SBATCH --job-name=az_trimmed_out
 #SBATCH --mem=16G
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=7-00:00:00
 #SBATCH --array=1-36 #read the 36 files at the same time
 
-#SBATCH -o azfastqc-%a.out #saves output to this file, replace %a w/ unique array ID
-#SBATCH -e azfastqc-%a.err #saves error to the file, replace %a w/ unique array ID
+#SBATCH -o aztrimraw-%a.out #saves output to this file, replace %a w/ unique array ID
+#SBATCH -e aztrimraw-%a.err #saves error to the file, replace %a w/ unique array ID
 
 #SBATCH --mail-type=ALL #auto-send email on all updates
 #SBATCH --mail-user=az199@duke.edu
