@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=7-00:00:00
-#SBATCH --array=1-36 #read the 36 files at the same time
+#SBATCH --array=0-17 #read the 18 files at the same time
 
 #SBATCH -o aztrimraw-%a.out #saves output to this file, replace %a w/ unique array ID
 #SBATCH -e aztrimraw-%a.err #saves error to the file, replace %a w/ unique array ID
@@ -17,7 +17,6 @@
 #Load environment/modules
 source /hpc/home/az199/miniconda3/etc/profile.d/conda.sh
 conda activate rna_seq
-module load mtrim-galore
 
 #Establish paths
 raw_input="/work/clh162/OysterRNA24/rawreads"
@@ -29,9 +28,9 @@ mkdir -p $trim_out
 ##Decipher raw inputs and paths for each read sample
 #1. generates rsamples from the rawreads for R1, read, pipe, strip away suffix
 #2. define the index for each rsample in the array through job passing
-#3. define R1 and R2 for the sample
-rsamples=($(ls ${raw_input}/*_R1_001.fastq.gz | sed 's/R1_001.fastq.gz//' | xargs -n 1 basename))
-rsample=${rsamples[$SLURM_ARRAY_TASK_ID-1]}
+#3. define R1 and R2 for te sample
+rsamples=($(ls ${raw_input}/*_R1_001.fastq.gz | sed 's/_R1_001.fastq.gz//' | xargs -n 1 basename))
+rsample=${rsamples[$SLURM_ARRAY_TASK_ID]}
 r1=${raw_input}/${rsample}_R1_001.fastq.gz
 r2=${raw_input}/${rsample}_R2_001.fastq.gz
 
@@ -42,4 +41,6 @@ trim_galore \
     --output_dir $trim_out
 
 #Print completion statement
-echo "Trimming Completed for ${rsample}
+echo "Trimming Completed for ${rsample}"
+
+conda deactivate 

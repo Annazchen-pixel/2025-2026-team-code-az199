@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
 
-#SBATCH -o azmultiqc-%a.out #saves output to this file, replace %a w/ unique array ID
-#SBATCH -e azmultiqc-%a.err #saves error to the file, replace %a w/ unique array ID
+#SBATCH -o azmultiqc-%j.out #saves output to this file, replace %a w/ unique job ID
+#SBATCH -e azmultiqc-%j.err #saves error to the file, replace %a w/ unique job ID
 
 #SBATCH --mail-type=ALL #auto-send email on all updates
 #SBATCH --mail-user=az199@duke.edu
@@ -16,7 +16,6 @@
 #Load modules and enviroments
 source /hpc/home/az199/miniconda3/etc/profile.d/conda.sh
 conda activate rna_seq
-module load multiqc
 
 #establish paths
 fastqc_output="/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/fastqc_results"
