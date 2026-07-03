@@ -481,10 +481,12 @@ server <- function(input, output, session){
         # YSI
         if(input$show_ysi){
           
+          trace_year <- as.numeric(gsub(".* ", "", color_key))
+          
           ysi_filtered <- ysi %>%
             filter(
               Farm == gsub(" 2024| 2025| 2026", "", farm_name),
-              Year %in% as.numeric(years)
+              Year == trace_year
             ) %>%
             filter_time(month_val, biweek_val)
           
