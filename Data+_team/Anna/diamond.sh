@@ -1,13 +1,13 @@
 #!/bin/bash -e
 
 #SBATCH --job-name=diamond_oyster
+#SBATCH --time=1-00:00:00
 #SBATCH -o diamond.out
 #SBATCH -e diamond.err
 #SBATCH --partition=common
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
 
 #Email update setup
 #SBATCH --mail-type=ALL #auto-send email on all updates
@@ -32,8 +32,8 @@ diamond blastp \
     -q $new_genome \
     -o $diamond_out \
     --evalue 1e-10 \
-    --max-target-seqs 50 \
-    --threads 20 \
+    --max-target-seqs 1 \
+    --ultra-sensitive \
     --outfmt 6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
 
 conda deactivate
