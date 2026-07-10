@@ -17,6 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
+#################### count - number of reads mapped/gene
+######### a measure of gene expression
+
 library(stringr)
 
 # read the gene count files
@@ -39,7 +42,7 @@ View(old_cmatrix)
 # save old_cmatrix
 write.table(
   old_cmatrix,
-  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU17counts_clean.txt",
+  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU17_gcounts_clean.txt",
   sep = "\t",
   quote = FALSE,
   row.names = TRUE,
@@ -51,6 +54,10 @@ write.table(
 ### Load and Process Metadata
 
 ```{r}
+####################### colData - metadata, extra info ex. 
+######### location, collection date, rna...etc.
+### describes the column of count matrix
+
 # load necessary library
 library(readxl)
 
@@ -83,160 +90,79 @@ all(colnames(old_cmatrix) == rownames(coldata_17)) # matching check
 View(coldata_17) #Visualize
 ```
 
-### Import and Process Gene Annotations
-
-```{r}
-library(readr)
-#Read genes annotations w/ specific attributes
-gtf <- read.delim("/work/clh162/OysterRNA24/hisat2_align/Cv_genome_RU_2025_shared/Cvi_RU25.gtf", comment.char= "#", header = FALSE, sep = "\t", quote = "")
-
-#Manually assign geonomic column names
-names(gtf) <- c("sequence", "source", "feature", "start", "end", "score", "strand", "frame", "attribute")
-table(gtf$feature) #Output old_counts on CDs, exon, transcripts
-
-# keep transcripts in gtf (only interested)
-transcripts <- gtf[gtf$feature == "transcript", ]
-transcripts$attribute <- as.character(transcripts$attribute)
-
-# extract RU25 EVM gene id
-transcripts$gene_id <- sub('.*gene_id "([^"]+)".*$', '\\1', transcripts$attribute)
-transcripts$gene_id <- as.character(transcripts$gene_id)
-
-# insert diamond mapping to connect loc w/ evm
-joined_gene_ids <- read_csv("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv")
-
-transcripts$RU25_gene <- sub(
-  '.*gene_id "([^"]+)".*$',
-  '\\1',
-  transcripts$attribute
-)
-# add LOC ids to RU25 transcripts
-transcripts <- merge(
-  transcripts, 
-  joined_gene_ids, 
-  by = "RU25_gene",
-  all.x = TRUE
-)
-
-# rename mapped LOC ids as gene id
-transcripts$gene_id <- as.character(transcripts$ensembl_gene_id)
-transcripts <- transcripts[!is.na(transcripts$gene_id), ]
-
-# Keep one transcript annotation per gene
-transcripts <- transcripts[!duplicated(transcripts$gene_id), ]
-
-# Keep only genes present in the count matrix
-transcripts <- transcripts[match(rownames(old_cmatrix), transcripts$gene_id), ]
-
-# Verify every gene was found
-stopifnot(!any(is.na(transcripts$gene_id)))
-
-# Set row names
-rownames(transcripts) <- transcripts$gene_id
-
-# Final check
-stopifnot(identical(rownames(old_cmatrix), rownames(transcripts)))
-
-# Use as rowranges
-rowranges <- transcripts
-
-# final check
-stopifnot(identical(rownames(old_cmatrix), rownames(rowranges)))
-
-```
-
 ### Assemble Summarized Experiment
 
 ```{r}
-stopifnot(
-  identical(rownames(old_cmatrix), transcripts$gene_id) # features
-)
 
 # Load needed libraries
 library(SummarizedExperiment)
 library(GenomicRanges)
 
-# Convert row annotation to GRanges
-genes_row <-GRanges(
-  seqnames = rowranges$sequence, 
-  ranges = IRanges(rowranges$start, rowranges$end),
-  strand = rowranges$strand
-)
-names(genes_row) <- rownames(rowranges)
-
 #Build Summarized Experiment
-se <- SummarizedExperiment(
+se_17 <- SummarizedExperiment(
   assays = list(old_counts = as.matrix(old_cmatrix)),
-  rowRanges = genes_row,
   colData = coldata_17
 )
 
 #Quality check
-head(assay(se))
-head(rowRanges(se))
+head(assay(se_17))
 
-all(rownames(se) == rownames(old_counts))
-all(colnames(se) == colnames(old_counts))
-
-dim(assay(se))
-
-colData(se) #Access the sample annotations
+colData(se_17) #Access the sample annotations
 
 #Save the Summarized Experiment File
 dir.create("data", showWarnings = FALSE)
-saveRDS(se, "data/RU17_se.rds")
+saveRDS(se_17, "data/RU17_se.rds")
 ```
 
 ### Generate DESeqDataSet
 
 ```{r fig.width= 10, fig.height = 8}
+
 #Load required packages
 suppressPackageStartupMessages({
     library(DESeq2)
     library(ExploreModelMatrix)})
 
 #Load saved SummarizedExperiment object
-se <- readRDS("data/RU17_se.rds")
+se_17 <- readRDS("data/RU17_se.rds")
 
 #Extract month from collection date in data
-colData(se)$Month <- format(colData(se)$Date_Collected, "%b")
+colData(se_17)$Month <- format(colData(se_17)$Date_Collected, "%b")
 
 # Convert metadata variables to factors
-colData(se)$Location <- factor(colData(se)$Location)
-colData(se)$Month <- factor(
-  colData(se)$Month,
+colData(se_17)$Location <- factor(colData(se_17)$Location)
+colData(se_17)$Month <- factor(
+  colData(se_17)$Month,
   levels = c("Jun", "Jul", "Aug")
 )
 
 #View column names to evaluate validity
-colnames(colData(se))
-
+colnames(colData(se_17))
 
 #Create DESeqDataSet object
 #DESeq for Single Design (Location)
-dds <- DESeqDataSet(
-  se, 
+dds_location <- DESeqDataSet(
+  se_17, 
   design = ~ Location
 )
-dds <- DESeq(dds)
-plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location")
+dds_location <- DESeq(dds_location)
+plotDispEsts(dds_location, main = "Dispersion Estimates: Design ~Location")
 
 #DESeq for Single Design (Month)
 dds_month <- DESeqDataSet(
-  se, 
+  se_17, 
   design = ~ Month
 )
 dds_month <- DESeq(dds_month)
 plotDispEsts(dds_month, main = "Dispersion Estimates: Design ~Month")
 
-
 #DESeq for Combination Design (Month * Location)
-dds_comb <- DESeqDataSet(
-  se, 
+dds <- DESeqDataSet(
+  se_17, 
   design = ~ Location * Month
 )
-dds_comb <- DESeq(dds_comb)
-plotDispEsts(dds_comb, main = "Dispersion Estimates: Design ~Location * Month")
+dds <- DESeq(dds)
+plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 ```
 
 ### Extract, Organize, and Name Data
@@ -250,48 +176,48 @@ deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/A
 if(!dir.exists(deseq_out_dir)) dir.create(deseq_out_dir, recursive = TRUE)
 
 # Extract CMT Comparisons
-res_Jul_vs_Jun_CMT <- results(dds_comb, contrast = c("Month", "Jul", "Jun"), alpha = 0.05)
-res_Aug_vs_Jun_CMT <- results(dds_comb, contrast = c("Month", "Aug", "Jun"), alpha = 0.05)
-res_Aug_vs_Jul_CMT <- results(dds_comb, contrast = c("Month", "Aug", "Jul"), alpha = 0.05)
+res17_Jul_vs_Jun_CMT <- results(dds, contrast = c("Month", "Jul", "Jun"), alpha = 0.05)
+res17_Aug_vs_Jun_CMT <- results(dds, contrast = c("Month", "Aug", "Jun"), alpha = 0.05)
+res17_Aug_vs_Jul_CMT <- results(dds, contrast = c("Month", "Aug", "Jul"), alpha = 0.05)
 
 # Construct DAF contrasts to be Extracted
 deseq_comps <- list(
-  "res_DAF_vs_CMT_Jun" = c("Location", "DAF", "CMT"),
-  "res_DAF_vs_CMT_Jul" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthJul")),
-  "res_DAF_vs_CMT_Aug" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthAug")),
-  "res_Jul_vs_Jun_DAF" = list(c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
-  "res_Aug_vs_Jun_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug")),
-  "res_Aug_vs_Jul_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug"), c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
-  "res_Jul_vs_Jun_CMT" = res_Jul_vs_Jun_CMT,
-  "res_Aug_vs_Jun_CMT" = res_Aug_vs_Jun_CMT,
-  "res_Aug_vs_Jul_CMT" = res_Aug_vs_Jul_CMT)
+  "res17_DAF_vs_CMT_Jun" = c("Location", "DAF", "CMT"),
+  "res17_DAF_vs_CMT_Jul" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthJul")),
+  "res17_DAF_vs_CMT_Aug" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthAug")),
+  "res17_Jul_vs_Jun_DAF" = list(c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
+  "res17_Aug_vs_Jun_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug")),
+  "res17_Aug_vs_Jul_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug"), c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
+  "res17_Jul_vs_Jun_CMT" = res17_Jul_vs_Jun_CMT,
+  "res17_Aug_vs_Jun_CMT" = res17_Aug_vs_Jun_CMT,
+  "res17_Aug_vs_Jul_CMT" = res17_Aug_vs_Jul_CMT)
 
 for (item in names(deseq_comps)) {
   message(paste("Processing:", item))
   if (inherits(deseq_comps[[item]], "DESeqResults")) {
-    res_df <- as.data.frame(deseq_comps[[item]])
+    res17_df <- as.data.frame(deseq_comps[[item]])
   } else {
-    res_obj <- results(dds_comb, contrast = deseq_comps[[item]], alpha = 0.05)
+    res17_obj <- results(dds, contrast = deseq_comps[[item]], alpha = 0.05)
     # --- Assign it to global environment --- #
-    assign(item, res_obj, envir = .GlobalEnv)
-    res_df <- as.data.frame(res_obj)
+    assign(item, res17_obj, envir = .GlobalEnv)
+    res17_df <- as.data.frame(res17_obj)
   }
 }
 all_comps <- c(
   #  --- Site-to-Site Comparisons --- #
-  "res_DAF_vs_CMT_Jun",
-  "res_DAF_vs_CMT_Jul",
-  "res_DAF_vs_CMT_Aug",
+  "res17_DAF_vs_CMT_Jun",
+  "res17_DAF_vs_CMT_Jul",
+  "res17_DAF_vs_CMT_Aug",
   
   # ---DAF Comparisons ---#
-  "res_Jul_vs_Jun_DAF",
-  "res_Aug_vs_Jun_DAF",
-  "res_Aug_vs_Jul_DAF",
+  "res17_Jul_vs_Jun_DAF",
+  "res17_Aug_vs_Jun_DAF",
+  "res17_Aug_vs_Jul_DAF",
   
   # --- CMT Comparisons --- #
-  "res_Jul_vs_Jun_CMT",
-  "res_Aug_vs_Jun_CMT",
-  "res_Aug_vs_Jul_CMT"
+  "res17_Jul_vs_Jun_CMT",
+  "res17_Aug_vs_Jun_CMT",
+  "res17_Aug_vs_Jul_CMT"
 )
 
 #Convert row names to dedicated column and save as .csv in dir
@@ -301,9 +227,6 @@ for (item in all_comps) {
   write_csv(
     as.data.frame(get(item)) |> rownames_to_column(var= "gene_id"),
     paste0(deseq_out_dir, item))}
-
-#Load old to New Gene ID File for ENSEMBL ID Communication
-joined_gene_ids <- read.csv("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv")
 ```
 
 ### Remove Unexpressed Genes
@@ -330,14 +253,14 @@ dds <- dds[keep, ]
 #Library size = the total num of reads assigned to genes/sample
 
 # Total old_counts per sample
-se$libSize <- colSums(assay(se))
+se_17$libSize <- colSums(assay(se_17))
 
 #Plot libSize by using R's native pipe "|>"
 #to extract coldata_17, turn into reg data frame
 #send to ggplot
 
 #Visualize library sizes across all samples
-colData(se) |>
+colData(se_17) |>
   as.data.frame() |>
   ggplot(aes(Sample_ID, 
              y = libSize /1e6, 
@@ -347,9 +270,6 @@ colData(se) |>
   theme(axis.text.x = element_text(angle = 45, 
                                    hjust = 1, 
                                    vjust = 1))
-
-#Store size factors into  a DESeqDataSet for normalization
-dds <- estimateSizeFactors(dds)
 
 #Compare size factors to raw library sizes
 ggplot(data.frame(
@@ -625,12 +545,12 @@ for (item in all_comps) {
 ### Plot MA with LFC Shrinkage
 
 ```{r}
-resultsNames(dds_comb)
+resultsNames(dds)
 
-coef_names <- resultsNames(dds_comb)[-1]
+coef_names <- resultsNames(dds)[-1]
 
 for (item in coef_names) {
-  LFC <- lfcShrink(dds_comb, coef = item, type = "apeglm")
+  LFC <- lfcShrink(dds, coef = item, type = "apeglm")
   plotMA(
     LFC, 
     main = item, 
@@ -788,7 +708,7 @@ env_corr_matrix <- cor(env_numeric,
                        use = "complete.obs")
 
 #Set color degrations
-corr_colors <- colorRamp2(c(-1, 0, 1), c("orange", "white", "orange"))
+corr_colors <- colorRamp2(c(-1, 0, 1), c("forestgreen", "white", "orange"))
 
 #Generate Correlation Heatmap for Environmental Factors
 env_corr_map <- Heatmap(
@@ -850,7 +770,7 @@ top8000 <- names(sort(gene_mad, decreasing = TRUE)[1:8000])
 expr_filtered <- expr[top8000, ]
 
 # Get metadata
-pheno <- as.data.frame(coldata_17(vsd))
+pheno <- as.data.frame(colData(vsd))
 feature <- as.data.frame(rowData(vsd))[top8000,  , drop = FALSE]
 
 # Transpose the data
@@ -1125,7 +1045,7 @@ diamond_out <-diamond_out |>
 #For each RU25 gene match, find RU17 gene name using protein_id
 joined_gene_ids <- diamond_out |>
   left_join(ru17_gene_protein, by = "protein_id") |>
-  dplyr::select(RU25_gene, ensembl_gene_id = gene)
+  transmute(RU25_gene, ensembl_gene_id = gene)
 
 #Save output
 write_csv(
@@ -1138,58 +1058,39 @@ write_csv(
 
 ```{r}
 #Installs
-library(tidyverse)
-my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.3"
-if(!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
+
+my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.4"
+if (!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
 .libPaths(c(my_lib, .libPaths()))
 
-if(!require("BiocManager", quietly = TRUE, lib.loc = my_lib))
-  install.packages("BiocManager")
-BiocManager::install(version= "3.20", ask = FALSE)
-library(BiocManager, lib.loc = my_lib)
-BiocManager::install(c("DBI", "dbplyr", "RSQLite"), type = "source", force = TRUE)
-BiocManager::install("clusterProfiler")
-install.packages("dbplyr")
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager", lib = my_lib)
+}
 
-BiocManager::install("biomaRt", 
-                     lib = .libPaths()[1], 
-                     update = FALSE, 
-                     ask = FALSE, 
-                     site_repository = "https://bioconductor.org/packages/3.18/bioc")
+BiocManager::install(version = "3.20", ask = FALSE, lib = my_lib)
 
-if (!requireNamespace("goseq", quietly = TRUE, lib.loc = my_lib)) {
-    BiocManager::install("goseq", lib = my_lib, update = FALSE, ask = FALSE, type = "source")}
+pkgs_needed <- c("dplyr", "dbplyr", "DBI", "RSQLite", "biomaRt", "goseq",
+                  "clusterProfiler", "DESeq2", "AnnotationDbi", "tidyverse")
 
-if (!requireNamespace("tidyverse", quietly = TRUE, lib.loc = my_lib)) {
-    install.packages("tidyverse", lib = my_lib, repos = "https://cloud.r-project.org")}
+pkgs_missing <- pkgs_needed[!sapply(pkgs_needed, requireNamespace, quietly = TRUE, lib.loc = my_lib)]
+
+if (length(pkgs_missing) > 0) {
+  BiocManager::install(pkgs_missing, lib = my_lib, update = FALSE, ask = FALSE)
+}
 ```
 
 ```{r}
 # Load Libraries
 
-# 1. Force R to load your updated dplyr directly from your personal 4.4 folder
-library(dplyr, lib.loc = "~/R/x86_64-pc-linux-gnu-library/4.4")
-
-# 2. Check to ensure it's using the new version (should be 1.2.0 or higher)
-packageVersion("dplyr")
-
-# 3. Now load biomaRt
-library(biomaRt)
-
-library(ggplot2)
-library(AnnotationDbi)
-library(DESeq2)
+library(tidyverse)
 library(dplyr)
-library(BiocManager, lib.loc = my_lib)
-
-remove.packages(c("dplyr", "dbplyr", "biomaRt"))
-install.packages("dplyr")
-BiocManager::install("biomaRt")
-
-
-library(biomaRt, lib =  )
-library(tidyverse, lib.loc = my_lib)
+library(biomaRt)
+library(DESeq2)
+library(AnnotationDbi)
 library(goseq)
+library(ggplot2)
+
+packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 ```
 
 ```{r}
@@ -1215,7 +1116,6 @@ gene_lengths <- attrs %>%
 
 length_vector <- gene_lengths$transcript_length
 names(length_vector) <- gene_lengths$ensembl_gene_id
-
 ```
 
 ```{r}
@@ -1231,20 +1131,23 @@ for (item in all_comps) {
   
   # ---left-join to add ENSEMBL IDs ---#
   res_joined <- res_df %>%
-    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) %>%
-    filter(!is.na(ensembl_gene_id))
-  
+    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) |>
+    filter(!is.na(ensembl_gene_id),
+           !is.na(padj))
+  res_joined <- res_joined |>
+    arrange(padj) |>
+    group_by(ensembl_gene_id) |>
+    slice(1) |>
+    ungroup()
   # --- Build binary DE genes vector to match only genes with lengths --- #
-  
-  DE_genes_vector <- as.integer(
-    res_joined$padj < 0.05 & !is.na(res_joined$padj)
-  )
-  names(DE_genes_vector) <- res_joined$ensembl_gene_id
+  genes_vector <- as.integer(res_joined$padj < 0.05 & !is.na(res_joined$padj))
+  names(genes_vector) <- res_joined$ensembl_gene_id
   
   # --- Restrict vectors to overlap w/ DESeq result universe --- #
-  common_genes <- intersect(names(DE_genes_vector), names(length_vector))
+  common_genes <- intersect(names(genes_vector),
+                            names(length_vector))
   
-  sub_DE_genes_vector <- DE_genes_vector[common_genes]
+  sub_DE_genes_vector <- genes_vector[common_genes]
   sub_length_vector <- length_vector[common_genes]
   
   # --- Sanity check validation --- #
@@ -1253,8 +1156,7 @@ for (item in all_comps) {
   
   # --- Save vectors to empty lists created --- #
   all_length_vectors[[item]] <- sub_length_vector
-  all_de_vector[[item]] <- sub_DE_genes_vector
-}
+  all_de_vector[[item]] <- sub_DE_genes_vector}
 ```
 
 ### Running Goseq()
@@ -1273,7 +1175,7 @@ for (item in all_comps) {
   length_vector <- all_length_vectors[[item]]
   
   # --- 2) Fit Probability Weighting Function (PWF) to account for gene length biases --- #
-  pwf <- nullp(DEgenes = DE_genes_vector, 
+  pwf <- nullp(DE_genes_vector, 
                bias.data = length_vector, 
                plot.fit = FALSE) #rejects plots in console
   # --- 3) Run goseq --- #
@@ -1292,29 +1194,23 @@ for (item in all_comps) {
   write_csv(GO.wall, file = file_out_path)
   
   # Plot top 10 significant GO terms
-  p <- GO.wall |>
-    slice_min(order_by = over_represented_pvalue, n = 10) |>
-    mutate(hitsPerc=numDEInCat * 100 / numInCat,
-           log10_p = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))) |>
-    ggplot(aes(x=hitsPerc, 
-              y=reorder(term, log10_p), #reorder to make the plot cleaner
-              colour=log10_p, 
-              size=numDEInCat)) +
-      geom_point()+
-      expand_limits(x=0) +
-      labs(title = clean_name, 
-           x="Hits (%)", 
-           y = "GO term", 
-           colour = "-log10(p-value)", 
-           size = "Count") +
-      theme_minimal()
-  print(p)
-  total_GO_terms <- total_GO_terms + nrow(GO.wall)
-  message(
-    item, 
-    "| Total GO terms: ", nrow(GO.wall)
-  )
+ p <- GO.wall |>
+  mutate(hitsPerc = (numDEInCat * 100 / numInCat) |>
+           arrange(over_represented_pvalue) |>
+           slice_head(n=10) |>
+           mutate(
+             term = factor(term, levels = rev(term))),
+         log10_p = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))) |>
+  ggplot(aes(x = hitsPerc, 
+             y = reorder(term, log10_p),
+             colour = log10_p, 
+             size = numInCat)) +    
+  geom_point() +
+  expand_limits(x = 0) +
+  labs(title = clean_name, x = "Hits (%)", y = "GO term",
+       colour = "-log10(p-value)", size = "Count") +
+  theme_minimal()
+ print(p)
 }
-print(total_GO_terms)
 
 ```

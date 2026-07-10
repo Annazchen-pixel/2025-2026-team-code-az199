@@ -1122,56 +1122,39 @@ write_csv(
 
 ```{r}
 #Installs
-library(tidyverse)
-my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.3"
-if(!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
+
+my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.4"
+if (!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
 .libPaths(c(my_lib, .libPaths()))
 
-if(!require("BiocManager", quietly = TRUE, lib.loc = my_lib))
-  install.packages("BiocManager")
-BiocManager::install(version= "3.20", ask = FALSE)
-library(BiocManager, lib.loc = my_lib)
-BiocManager::install(c("DBI", "dbplyr", "RSQLite"), type = "source", force = TRUE)
-BiocManager::install("clusterProfiler")
-install.packages("dbplyr")
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager", lib = my_lib)
+}
 
-BiocManager::install("biomaRt", 
-                     lib = .libPaths()[1], 
-                     update = FALSE, 
-                     ask = FALSE, 
-                     site_repository = "https://bioconductor.org/packages/3.18/bioc")
+BiocManager::install(version = "3.20", ask = FALSE, lib = my_lib)
 
-if (!requireNamespace("goseq", quietly = TRUE, lib.loc = my_lib)) {
-    BiocManager::install("goseq", lib = my_lib, update = FALSE, ask = FALSE, type = "source")}
+pkgs_needed <- c("dplyr", "dbplyr", "DBI", "RSQLite", "biomaRt", "goseq",
+                  "clusterProfiler", "DESeq2", "AnnotationDbi", "tidyverse")
 
-if (!requireNamespace("tidyverse", quietly = TRUE, lib.loc = my_lib)) {
-    install.packages("tidyverse", lib = my_lib, repos = "https://cloud.r-project.org")}
+pkgs_missing <- pkgs_needed[!sapply(pkgs_needed, requireNamespace, quietly = TRUE, lib.loc = my_lib)]
+
+if (length(pkgs_missing) > 0) {
+  BiocManager::install(pkgs_missing, lib = my_lib, update = FALSE, ask = FALSE)
+}
 ```
 
 ```{r}
 # Load Libraries
 
-# 1. Force R to load your updated dplyr directly from your personal 4.4 folder
-library(dplyr, lib.loc = "~/R/x86_64-pc-linux-gnu-library/4.4")
-
-# 2. Check to ensure it's using the new version (should be 1.2.0 or higher)
-packageVersion("dplyr")
-
-# 3. Now load biomaRt
-library(biomaRt)
-
-library(ggplot2)
-library(AnnotationDbi)
-library(DESeq2)
-library(dplyr)
-library(BiocManager)
-
-remove.packages(c("dplyr", "dbplyr", "biomaRt"))
-install.packages("dplyr")
-BiocManager::install("biomaRt")
-
 library(tidyverse)
+library(dplyr)
+library(biomaRt)
+library(DESeq2)
+library(AnnotationDbi)
 library(goseq)
+library(ggplot2)
+
+packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 ```
 
 ```{r}
