@@ -1,5 +1,5 @@
 ---
-title: "24_oyster_analysis"
+title: "24_rnaseq_pipeline_RU25"
 author: "Anna Zhang"
 date: "2026-06-05"
 output: html_document
@@ -7,7 +7,7 @@ output: html_document
 
 # Oyster Data Analysis
 
-## Steps
+## Set Ups
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -17,63 +17,71 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
+#################### count - number of reads mapped/gene
+######### a measure of gene expression
+
 library(stringr)
 
-# Read the gene count files
+# read the gene count files
 counts <- read.csv("/work/clh162/Data+/Sophie/2025-2026-team-code-sac165/Data+_team/Sophie/gene_counts/gene_counts.csv", skip = 1, check.names = FALSE, row.names = 1 )
 
-# Clean sample names
+# view/check data format to see if adjustments needed
+colnames(counts)[1:10]
+head(counts)
+
+# remove featurecounts data to keep only gene data
 sample_names <- basename(colnames(counts)[6:ncol(counts)])
+
+# clean sample names
 sample_names <- sub("_sorted\\.bam", "", sample_names)
 sample_names <- sub("^(.*_Gill).*", "\\1", sample_names)
 colnames(counts)[6:ncol(counts)] <- sample_names
 
 # set the column names to just the sample names
 count_matrix <- counts[, 6:ncol(counts)]
-colnames(count_matrix)
-
-# gives number of rows and number of columns
-dim(count_matrix)
 
 # save count_matrix
 write.table(
   count_matrix,
-  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/gene_counts_clean.txt",
+  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU25_gcounts_clean.txt",
   sep = "\t",
   quote = FALSE,
   row.names = TRUE,
   col.names = NA
 )
-
 ```
 
 ### Load and Process Metadata
 
 ```{r}
-#Load necessary library
+
+####################### colData - metadata, extra info ex. 
+######### location, collection date, rna...etc.
+### describes the column of count matrix
+
+# load necessary library
 library(readxl)
 
-#Read the gene annotation files, skip the first line of "None"
+# read the gene annotation files, skip the first line of "None"
 coldata_raw <- read_excel("/work/clh162/OysterRNA24/xRNA for BC Summer 2024.xlsx", sheet = 1, skip = 1)
 
-View(coldata_raw) #visualize output file
 dim(coldata_raw) #view dimension
 ```
 
 ### Clean and Resize Metadata to Match Gene Counts Data
 
 ```{r}
-#Convert coldata_raw into standard R frame and rename: coldata
+# convert coldata_raw into standard R frame and rename: coldata
 coldata <- as.data.frame(coldata_raw)
 
-#Set column "Sample_ID" as rownames of coldata
+# set column "Sample_ID" as rownames of coldata
 rownames(coldata) <- coldata$Sample_ID
 View(coldata) #visualize resulting data
 
-#Check for matching qualities
+# rheck for matching qualities
 all(colnames(count_matrix) == rownames(coldata))
 
-#Rearrange rows of coldata to match column names in count matrix
+# rearrange rows of coldata to match column names in count matrix
 coldata <- coldata[colnames(count_matrix), ]
 
 # Quick quality check
@@ -86,15 +94,22 @@ View(coldata) #Visualize
 ### Import and Process Gene Annotations
 
 ```{r}
-#Read genes annotations w/ specific attributes
+
+############ gtf is gene annotation
+#### contains exons, cds regions, transcripts
+
+# read genes annotations w/ specific attributes
 gtf <- read.delim("/work/clh162/OysterRNA24/hisat2_align/Cv_genome_RU_2025_shared/Cvi_RU25.gtf", comment.char= "#", header = FALSE, sep = "\t", quote = "")
 
 #Manually assign geonomic column names
 names(gtf) <- c("sequence", "source", "feature", "start", "end", "score", "strand", "frame", "attribute")
 table(gtf$feature) #Output counts on CDs, exon, transcripts
 
+# keep transcripts in gtf
 transcripts <- gtf[gtf$feature == "transcript", ]
 transcripts$attribute <- as.character(transcripts$attribute)
+
+# extract gene_id
 transcripts$gene_id <- sub('.*gene_id "([^"]+)".*$', '\\1', transcripts$attribute)
 transcripts$gene_id <- as.character(transcripts$gene_id)
 
@@ -126,11 +141,11 @@ stopifnot(
   identical(rownames(count_matrix), transcripts$gene_id) # features
 )
 
-# Load needed libraries
+# load needed libraries
 library(SummarizedExperiment)
 library(GenomicRanges)
 
-# Convert row annotation to GRanges
+# convert row annotation to GRanges
 genes_row <-GRanges(
   seqnames = rowranges$sequence, 
   ranges = IRanges(rowranges$start, rowranges$end),
@@ -138,27 +153,25 @@ genes_row <-GRanges(
 )
 names(genes_row) <- rownames(rowranges)
 
-#Build Summarized Experiment
+# build Summarized Experiment
 se <- SummarizedExperiment(
   assays = list(counts = as.matrix(count_matrix)),
   rowRanges = genes_row,
   colData = coldata
 )
 
-#Quality check
+# quality check
 head(assay(se))
 head(rowRanges(se))
 
 all(rownames(se) == rownames(counts))
 all(colnames(se) == colnames(counts))
 
-dim(assay(se))
+colData(se) # access the sample annotations
 
-colData(se) #Access the sample annotations
-
-#Save the Summarized Experiment File
+# save the Summarized Experiment File
 dir.create("data", showWarnings = FALSE)
-saveRDS(se, "data/oyster_24_anal.rds")
+saveRDS(se, "data/ru25_se.rds")
 ```
 
 ### Generate DESeqDataSet
@@ -170,8 +183,7 @@ suppressPackageStartupMessages({
     library(ExploreModelMatrix)})
 
 #Load saved SummarizedExperiment object
-se <- readRDS("data/oyster_24_anal.rds")
-
+se <- readRDS("data/ru25_se.rds")
 #Extract month from collection date in data
 colData(se)$Month <- format(colData(se)$Date_Collected, "%b")
 
@@ -188,12 +200,12 @@ colnames(colData(se))
 
 #Create DESeqDataSet object
 #DESeq for Single Design (Location)
-dds <- DESeqDataSet(
+dds_location <- DESeqDataSet(
   se, 
   design = ~ Location
 )
-dds <- DESeq(dds)
-plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location")
+dds_location <- DESeq(dds_location)
+plotDispEsts(dds_location, main = "Dispersion Estimates: Design ~Location")
 
 #DESeq for Single Design (Month)
 dds_month <- DESeqDataSet(
@@ -205,12 +217,12 @@ plotDispEsts(dds_month, main = "Dispersion Estimates: Design ~Month")
 
 
 #DESeq for Combination Design (Month * Location)
-dds_comb <- DESeqDataSet(
+dds <- DESeqDataSet(
   se, 
   design = ~ Location * Month
 )
-dds_comb <- DESeq(dds_comb)
-plotDispEsts(dds_comb, main = "Dispersion Estimates: Design ~Location * Month")
+dds <- DESeq(dds)
+plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 ```
 
 ### Extract, Organize, and Name Data
@@ -224,9 +236,9 @@ deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/A
 if(!dir.exists(deseq_out_dir)) dir.create(deseq_out_dir, recursive = TRUE)
 
 # Extract CMT Comparisons
-res_Jul_vs_Jun_CMT <- results(dds_comb, contrast = c("Month", "Jul", "Jun"), alpha = 0.05)
-res_Aug_vs_Jun_CMT <- results(dds_comb, contrast = c("Month", "Aug", "Jun"), alpha = 0.05)
-res_Aug_vs_Jul_CMT <- results(dds_comb, contrast = c("Month", "Aug", "Jul"), alpha = 0.05)
+res_Jul_vs_Jun_CMT <- results(dds, contrast = c("Month", "Jul", "Jun"), alpha = 0.05)
+res_Aug_vs_Jun_CMT <- results(dds, contrast = c("Month", "Aug", "Jun"), alpha = 0.05)
+res_Aug_vs_Jul_CMT <- results(dds, contrast = c("Month", "Aug", "Jul"), alpha = 0.05)
 
 # Construct DAF contrasts to be Extracted
 deseq_comps <- list(
@@ -245,7 +257,7 @@ for (item in names(deseq_comps)) {
   if (inherits(deseq_comps[[item]], "DESeqResults")) {
     res_df <- as.data.frame(deseq_comps[[item]])
   } else {
-    res_obj <- results(dds_comb, contrast = deseq_comps[[item]], alpha = 0.05)
+    res_obj <- results(dds, contrast = deseq_comps[[item]], alpha = 0.05)
     # --- Assign it to global environment --- #
     assign(item, res_obj, envir = .GlobalEnv)
     res_df <- as.data.frame(res_obj)
@@ -276,8 +288,6 @@ for (item in all_comps) {
     as.data.frame(get(item)) |> rownames_to_column(var= "gene_id"),
     paste0(deseq_out_dir, item))}
 
-#Load old to New Gene ID File for ENSEMBL ID Communication
-joined_gene_ids <- read.csv("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv")
 ```
 
 ### Remove Unexpressed Genes
@@ -295,7 +305,7 @@ nrow(dds)
 # Keep genes with at least 10 counts in at least 3 samples
 keep <- rowSums(counts(dds) >= 10) >= 3
 sum(keep)
-dds <- dds[keep, ]
+dds_filter <- dds[keep, ]
 ```
 
 ### Adjust Library Size Differences
@@ -599,12 +609,12 @@ for (item in all_comps) {
 ### Plot MA with LFC Shrinkage
 
 ```{r}
-resultsNames(dds_comb)
+resultsNames(dds)
 
-coef_names <- resultsNames(dds_comb)[-1]
+coef_names <- resultsNames(dds)[-1]
 
 for (item in coef_names) {
-  LFC <- lfcShrink(dds_comb, coef = item, type = "apeglm")
+  LFC <- lfcShrink(dds, coef = item, type = "apeglm")
   plotMA(
     LFC, 
     main = item, 
@@ -762,7 +772,7 @@ env_corr_matrix <- cor(env_numeric,
                        use = "complete.obs")
 
 #Set color degrations
-corr_colors <- colorRamp2(c(-1, 0, 1), c("orange", "white", "orange"))
+corr_colors <- colorRamp2(c(-1, 0, 1), c("forestgreen", "white", "orange"))
 
 #Generate Correlation Heatmap for Environmental Factors
 env_corr_map <- Heatmap(
@@ -1099,7 +1109,7 @@ diamond_out <-diamond_out |>
 #For each RU25 gene match, find RU17 gene name using protein_id
 joined_gene_ids <- diamond_out |>
   left_join(ru17_gene_protein, by = "protein_id") |>
-  dplyr::select(RU25_gene, ensembl_gene_id = gene)
+  transmute(RU25_gene, ensembl_gene_id = gene)
 
 #Save output
 write_csv(
@@ -1154,15 +1164,13 @@ library(ggplot2)
 library(AnnotationDbi)
 library(DESeq2)
 library(dplyr)
-library(BiocManager, lib.loc = my_lib)
+library(BiocManager)
 
 remove.packages(c("dplyr", "dbplyr", "biomaRt"))
 install.packages("dplyr")
 BiocManager::install("biomaRt")
 
-
-library(biomaRt, lib =  )
-library(tidyverse, lib.loc = my_lib)
+library(tidyverse)
 library(goseq)
 ```
 
@@ -1205,20 +1213,23 @@ for (item in all_comps) {
   
   # ---left-join to add ENSEMBL IDs ---#
   res_joined <- res_df %>%
-    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) %>%
-    filter(!is.na(ensembl_gene_id))
-  
+    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) |>
+    filter(!is.na(ensembl_gene_id),
+           !is.na(padj))
+  res_joined <- res_joined |>
+    arrange(padj) |>
+    group_by(ensembl_gene_id) |>
+    slice(1) |>
+    ungroup()
   # --- Build binary DE genes vector to match only genes with lengths --- #
-  
-  DE_genes_vector <- as.integer(
-    res_joined$padj < 0.05 & !is.na(res_joined$padj)
-  )
-  names(DE_genes_vector) <- res_joined$ensembl_gene_id
+  genes_vector <- as.integer(res_joined$padj < 0.05 & !is.na(res_joined$padj))
+  names(genes_vector) <- res_joined$ensembl_gene_id
   
   # --- Restrict vectors to overlap w/ DESeq result universe --- #
-  common_genes <- intersect(names(DE_genes_vector), names(length_vector))
+  common_genes <- intersect(names(genes_vector),
+                            names(length_vector))
   
-  sub_DE_genes_vector <- DE_genes_vector[common_genes]
+  sub_DE_genes_vector <- genes_vector[common_genes]
   sub_length_vector <- length_vector[common_genes]
   
   # --- Sanity check validation --- #
@@ -1227,8 +1238,7 @@ for (item in all_comps) {
   
   # --- Save vectors to empty lists created --- #
   all_length_vectors[[item]] <- sub_length_vector
-  all_de_vector[[item]] <- sub_DE_genes_vector
-}
+  all_de_vector[[item]] <- sub_DE_genes_vector}
 ```
 
 ### Running Goseq()
@@ -1247,7 +1257,7 @@ for (item in all_comps) {
   length_vector <- all_length_vectors[[item]]
   
   # --- 2) Fit Probability Weighting Function (PWF) to account for gene length biases --- #
-  pwf <- nullp(DEgenes = DE_genes_vector, 
+  pwf <- nullp(DE_genes_vector, 
                bias.data = length_vector, 
                plot.fit = FALSE) #rejects plots in console
   # --- 3) Run goseq --- #
@@ -1266,29 +1276,23 @@ for (item in all_comps) {
   write_csv(GO.wall, file = file_out_path)
   
   # Plot top 10 significant GO terms
-  p <- GO.wall |>
-    slice_min(order_by = over_represented_pvalue, n = 10) |>
-    mutate(hitsPerc=numDEInCat * 100 / numInCat,
-           log10_p = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))) |>
-    ggplot(aes(x=hitsPerc, 
-              y=reorder(term, log10_p), #reorder to make the plot cleaner
-              colour=log10_p, 
-              size=numDEInCat)) +
-      geom_point()+
-      expand_limits(x=0) +
-      labs(title = clean_name, 
-           x="Hits (%)", 
-           y = "GO term", 
-           colour = "-log10(p-value)", 
-           size = "Count") +
-      theme_minimal()
-  print(p)
-  total_GO_terms <- total_GO_terms + nrow(GO.wall)
-  message(
-    item, 
-    "| Total GO terms: ", nrow(GO.wall)
-  )
+ p <- GO.wall |>
+  mutate(hitsPerc = (numDEInCat * 100 / numInCat) |>
+           arrange(over_represented_pvalue) |>
+           slice_head(n=10) |>
+           mutate(
+             term = factor(term, levels = rev(term))),
+         log10_p = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))) |>
+  ggplot(aes(x = hitsPerc, 
+             y = reorder(term, log10_p),
+             colour = log10_p, 
+             size = numInCat)) +    
+  geom_point() +
+  expand_limits(x = 0) +
+  labs(title = clean_name, x = "Hits (%)", y = "GO term",
+       colour = "-log10(p-value)", size = "Count") +
+  theme_minimal()
+ print(p)
 }
-print(total_GO_terms)
 
 ```
