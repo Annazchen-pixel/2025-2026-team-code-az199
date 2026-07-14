@@ -1,7 +1,7 @@
 ---
-title: "24_rnaseq_pipeline_RU25"
+title: "24_rnaseq_piplin_Yale25"
 author: "Anna Zhang"
-date: "2026-06-05"
+date: "2026-07-13"
 output: html_document
 ---
 
@@ -23,38 +23,37 @@ knitr::opts_chunk$set(echo = TRUE)
 library(stringr)
 
 # read the gene count files
-counts <- read.csv("/work/clh162/Data+/Sophie/2025-2026-team-code-sac165/Data+_team/Sophie/gene_counts/gene_counts.csv", skip = 1, check.names = FALSE, row.names = 1 )
+old_counts <- read.delim("/work/clh162/henry/results/yale25/featureCounts_counts/counts_matrix.txt", comment.char = "#", check.names = FALSE, row.names = 1 )
 
-# view/check data format to see if adjustments needed
-colnames(counts)[1:10]
-head(counts)
+# view/check data format to see if need adjustments 
+colnames(old_counts)[1:10]
+head(old_counts)
 
-# remove featurecounts data to keep only gene data
-sample_names <- basename(colnames(counts)[6:ncol(counts)])
+# remove featurecounts data
+old_cmatrix <- old_counts[, 6:ncol(old_counts)]
 
 # clean sample names
-sample_names <- sub("_sorted\\.bam", "", sample_names)
-sample_names <- sub("^(.*_Gill).*", "\\1", sample_names)
-colnames(counts)[6:ncol(counts)] <- sample_names
+colnames(old_cmatrix) <- basename(colnames(old_cmatrix))
+colnames(old_cmatrix) <- sub("_sorted\\.bam", "", colnames(old_cmatrix))
+colnames(old_cmatrix) <- sub("_S[0-9]+_L[0-9]+$", "", colnames(old_cmatrix))
 
-# set the column names to just the sample names
-count_matrix <- counts[, 6:ncol(counts)]
-
-# save count_matrix
+old_cmatrix <- as.matrix(old_cmatrix)
+View(old_cmatrix)
+# save old_cmatrix
 write.table(
-  count_matrix,
-  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU25_gcounts_clean.txt",
+  old_cmatrix,
+  file = "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/Yale25_gcounts_clean.txt",
   sep = "\t",
   quote = FALSE,
   row.names = TRUE,
   col.names = NA
 )
+
 ```
 
 ### Load and Process Metadata
 
 ```{r}
-
 ####################### colData - metadata, extra info ex. 
 ######### location, collection date, rna...etc.
 ### describes the column of count matrix
@@ -63,145 +62,87 @@ write.table(
 library(readxl)
 
 # read the gene annotation files, skip the first line of "None"
-coldata_raw <- read_excel("/work/clh162/OysterRNA24/xRNA for BC Summer 2024.xlsx", sheet = 1, skip = 1)
+coldata_y25_raw <- read_excel("/work/clh162/OysterRNA24/xRNA for BC Summer 2024.xlsx", sheet = 1, skip = 1)
 
-dim(coldata_raw) #view dimension
+dim(coldata_y25_raw) #view dimension
 ```
 
-### Clean and Resize Metadata to Match Gene Counts Data
+### Clean and Resize Metadata to Match Gene old_counts Data
 
 ```{r}
-# convert coldata_raw into standard R frame and rename: coldata
-coldata <- as.data.frame(coldata_raw)
+# convert coldata_y25_raw into standard R frame and rename: coldata_y25
+coldata_y25 <- as.data.frame(coldata_y25_raw)
 
-# set column "Sample_ID" as rownames of coldata
-rownames(coldata) <- coldata$Sample_ID
-View(coldata) #visualize resulting data
+# set column "Sample_ID" as rownames of coldata_y25
+rownames(coldata_y25) <- coldata_y25$Sample_ID
+View(coldata_y25) #visualize resulting data
 
-# rheck for matching qualities
-all(colnames(count_matrix) == rownames(coldata))
+# check for matching qualities
+all(colnames(old_cmatrix) == rownames(coldata_y25))
 
-# rearrange rows of coldata to match column names in count matrix
-coldata <- coldata[colnames(count_matrix), ]
+# rearrange rows of coldata_y25 to match column names in count matrix
+coldata_y25 <- coldata_y25[colnames(old_cmatrix), ]
 
-# Quick quality check
-stopifnot(identical(colnames(count_matrix), rownames(coldata)))
-all(colnames(count_matrix) == rownames(coldata)) #Matching check
+# quick quality check
+stopifnot(identical(colnames(old_cmatrix), rownames(coldata_y25)))
+all(colnames(old_cmatrix) == rownames(coldata_y25)) # matching check
 
-View(coldata) #Visualize
-```
-
-### Import and Process Gene Annotations
-
-```{r}
-
-############ gtf is gene annotation
-#### contains exons, cds regions, transcripts
-
-# read genes annotations w/ specific attributes
-gtf <- read.delim("/work/clh162/OysterRNA24/hisat2_align/Cv_genome_RU_2025_shared/Cvi_RU25.gtf", comment.char= "#", header = FALSE, sep = "\t", quote = "")
-
-#Manually assign geonomic column names
-names(gtf) <- c("sequence", "source", "feature", "start", "end", "score", "strand", "frame", "attribute")
-table(gtf$feature) #Output counts on CDs, exon, transcripts
-
-# keep transcripts in gtf
-transcripts <- gtf[gtf$feature == "transcript", ]
-transcripts$attribute <- as.character(transcripts$attribute)
-
-# extract gene_id
-transcripts$gene_id <- sub('.*gene_id "([^"]+)".*$', '\\1', transcripts$attribute)
-transcripts$gene_id <- as.character(transcripts$gene_id)
-
-# ensure character
-rownames(count_matrix) <- as.character(rownames(count_matrix))
-transcripts$gene_id <- as.character(transcripts$gene_id)
-
-# intersect
-common <- intersect(rownames(count_matrix), transcripts$gene_id)
-count_matrix <- count_matrix[common, ]
-transcripts <- transcripts[transcripts$gene_id %in% common, ]
-
-# define rowranges
-rowranges <- transcripts
-
-# force the identical orders
-rowranges <- rowranges[match(rownames(count_matrix), rowranges$gene_id), ]
-rownames(rowranges) <- rowranges$gene_id
-
-# final check
-stopifnot(identical(rownames(count_matrix), rownames(rowranges)))
-
+View(coldata_y25) #Visualize
 ```
 
 ### Assemble Summarized Experiment
 
 ```{r}
-stopifnot(
-  identical(rownames(count_matrix), transcripts$gene_id) # features
-)
 
-# load needed libraries
+# Load needed libraries
 library(SummarizedExperiment)
 library(GenomicRanges)
 
-# convert row annotation to GRanges
-genes_row <-GRanges(
-  seqnames = rowranges$sequence, 
-  ranges = IRanges(rowranges$start, rowranges$end),
-  strand = rowranges$strand
-)
-names(genes_row) <- rownames(rowranges)
-
-# build Summarized Experiment
-se <- SummarizedExperiment(
-  assays = list(counts = as.matrix(count_matrix)),
-  rowRanges = genes_row,
-  colData = coldata
+#Build Summarized Experiment
+se_y25 <- SummarizedExperiment(
+  assays = list(old_counts = as.matrix(old_cmatrix)),
+  colData = coldata_y25
 )
 
-# quality check
-head(assay(se))
-head(rowRanges(se))
+#Quality check
+head(assay(se_y25))
 
-all(rownames(se) == rownames(counts))
-all(colnames(se) == colnames(counts))
+colData(se_y25) #Access the sample annotations
 
-colData(se) # access the sample annotations
-
-# save the Summarized Experiment File
+#Save the Summarized Experiment File
 dir.create("data", showWarnings = FALSE)
-saveRDS(se, "data/ru25_se.rds")
+saveRDS(se_y25, "data/RU17_se.rds")
 ```
 
 ### Generate DESeqDataSet
 
 ```{r fig.width= 10, fig.height = 8}
+
 #Load required packages
 suppressPackageStartupMessages({
     library(DESeq2)
     library(ExploreModelMatrix)})
 
 #Load saved SummarizedExperiment object
-se <- readRDS("data/ru25_se.rds")
+se_y25 <- readRDS("data/RU17_se.rds")
+
 #Extract month from collection date in data
-colData(se)$Month <- format(colData(se)$Date_Collected, "%b")
+colData(se_y25)$Month <- format(colData(se_y25)$Date_Collected, "%b")
 
 # Convert metadata variables to factors
-colData(se)$Location <- factor(colData(se)$Location)
-colData(se)$Month <- factor(
-  colData(se)$Month,
+colData(se_y25)$Location <- factor(colData(se_y25)$Location)
+colData(se_y25)$Month <- factor(
+  colData(se_y25)$Month,
   levels = c("Jun", "Jul", "Aug")
 )
 
 #View column names to evaluate validity
-colnames(colData(se))
-
+colnames(colData(se_y25))
 
 #Create DESeqDataSet object
 #DESeq for Single Design (Location)
 dds_location <- DESeqDataSet(
-  se, 
+  se_y25, 
   design = ~ Location
 )
 dds_location <- DESeq(dds_location)
@@ -209,16 +150,15 @@ plotDispEsts(dds_location, main = "Dispersion Estimates: Design ~Location")
 
 #DESeq for Single Design (Month)
 dds_month <- DESeqDataSet(
-  se, 
+  se_y25, 
   design = ~ Month
 )
 dds_month <- DESeq(dds_month)
 plotDispEsts(dds_month, main = "Dispersion Estimates: Design ~Month")
 
-
 #DESeq for Combination Design (Month * Location)
 dds <- DESeqDataSet(
-  se, 
+  se_y25, 
   design = ~ Location * Month
 )
 #set DAF as the reference location
@@ -235,7 +175,7 @@ plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 library(readr)
 library(tibble)
 
-deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2/"
+deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2_Yale25/"
 if(!dir.exists(deseq_out_dir)) dir.create(deseq_out_dir, recursive = TRUE)
 
 # Extract site comparisons
@@ -305,7 +245,6 @@ for (item in all_comps) {
   write_csv(
     as.data.frame(get(item)) |> rownames_to_column(var= "gene_id"),
     paste0(deseq_out_dir, item))}
-
 ```
 
 ### Remove Unexpressed Genes
@@ -320,10 +259,10 @@ suppressPackageStartupMessages({
 #Number of genes total before filtering
 nrow(dds)
 
-# Keep genes with at least 10 counts in at least 3 samples
+# Keep genes with at least 10 old_counts in at least 3 samples
 keep <- rowSums(counts(dds) >= 10) >= 3
 sum(keep)
-dds_filter <- dds[keep, ]
+dds <- dds[keep, ]
 ```
 
 ### Adjust Library Size Differences
@@ -331,15 +270,15 @@ dds_filter <- dds[keep, ]
 ```{r}
 #Library size = the total num of reads assigned to genes/sample
 
-# Total counts per sample
-se$libSize <- colSums(assay(se))
+# Total old_counts per sample
+se_y25$libSize <- colSums(assay(se_y25))
 
 #Plot libSize by using R's native pipe "|>"
-#to extract colData, turn into reg data frame
+#to extract coldata_y25, turn into reg data frame
 #send to ggplot
 
 #Visualize library sizes across all samples
-colData(se) |>
+colData(se_y25) |>
   as.data.frame() |>
   ggplot(aes(Sample_ID, 
              y = libSize /1e6, 
@@ -349,9 +288,6 @@ colData(se) |>
   theme(axis.text.x = element_text(angle = 45, 
                                    hjust = 1, 
                                    vjust = 1))
-
-#Store size factors into  a DESeqDataSet for normalization
-dds <- estimateSizeFactors(dds)
 
 #Compare size factors to raw library sizes
 ggplot(data.frame(
@@ -366,7 +302,6 @@ ggplot(data.frame(
 ### Run DESeq2
 
 ```{r}
-
 # Extract default DESeq2 results
 results <- results (dds)
 
@@ -482,7 +417,7 @@ library(circlize)
 
 color_rb <- colorRamp2(c(-3,0,3), c("blue", "white", "red"))
 #Create vector of comparisons to be looped through
-comps <- "Location_DAF_vs_CMT"
+comps <- "Location_CMT_vs_DAF"
 
 #Set factor levels 
 vsd$Month <- factor(vsd$Month, levels = c("Jun", "Jul", "Aug"))
@@ -537,7 +472,7 @@ Heatmap(
     )
 
 # Pairwise Month Heatmaps
-loc_loop <- c("DAF", "CMT")
+loc_loop <- c("CMT", "DAF")
 month_loop <- list(
   c("Jun", "Jul"),
   c("Jun", "Aug"),
@@ -841,7 +776,7 @@ allowWGCNAThreads()
 vsd <- DESeq2::vst(dds, blind = FALSE)
 
 # 1. Prepare data
-# Need raw count data --> loaded into counts
+# Need raw count data --> loaded into old_counts
 expr <- assay(vsd)   #expression matrix
 
 # Filter for top 8000 Median Absolute Deviation (MAD) genes to limit modules and eliminate noises
@@ -1008,6 +943,7 @@ MElist <- moduleEigengenes(datexpr, colors = net$colors)
 MEs <- MElist$eigengenes
 head(MEs)
 
+#Save the network
 saveRDS(net, "data/WGCNA_network.rds")
 ```
 
@@ -1025,7 +961,7 @@ METree = hclust(as.dist(ME.dissimilarity), method = "average")
 par(mar = c(0,4,2,0)) #setting margin size
 par(cex = 0.6); #scaling graphics
 plot(METree)
-abline(h=0.4, col = "red") #line of 0.25 = correlation of 0.75
+abline(h=0.3, col = "red") #line of 0.25 = correlation of 0.75
 ```
 
 ### WGCNA: Merge Modules
@@ -1096,47 +1032,10 @@ labeledHeatmap(
 )
 table(net$colors)
 ```
-
-### Matching Genes
-
-```{r}
-library(readr)
-library(dplyr)
-library(stringr)
-
-#Load and strip gene and protein id from 2017 RU (reference mapping table)
-ru17_gene_protein <- read_csv("/work/clh162/OysterRNA24/DEG_analysis/GO/Cvi_RU17_ncbi_dataset/data/GCF_002022765.2/Cvi_RU17_gene_proteinID.csv",
-                              col_names = c("gene", "protein_id"))
-
-# Load Diamond output results
-diamond_cols <- c(
-    "RU25_gene", "protein_id", "pident", "length", "mismatch",
-  "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore") #defining column names
-
-#contains ortholog prediction data
-diamond_out <- read_tsv("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/diamond_results.txt", col_names = diamond_cols)
-
-#Match genes naming
-diamond_out <-diamond_out |>
-  mutate(RU25_gene = str_replace(RU25_gene, "\\.model\\.", ".TU."))
-
-#Joining genes id and protein
-#For each RU25 gene match, find RU17 gene name using protein_id
-joined_gene_ids <- diamond_out |>
-  left_join(ru17_gene_protein, by = "protein_id") |>
-  transmute(RU25_gene, ensembl_gene_id = gene)
-
-#Save output
-write_csv(
-  joined_gene_ids, 
-  "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv"
-)
-```
-
 ### GO: Load All Necessary Packages
 
 ```{r}
-#Installs
+#Installs ( do this one time, not repeatedly)
 
 my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.4"
 if (!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
@@ -1159,22 +1058,25 @@ if (length(pkgs_missing) > 0) {
 ```
 
 ```{r}
-# Load Libraries
-
-library(tidyverse)
-#library(dplyr)
+# troubleshooting downloads
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 BiocManager::install("biomaRt")
+
+# Load Libraries
 library(biomaRt)
 library(DESeq2)
 library(AnnotationDbi)
 library(goseq)
 library(ggplot2)
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyverse)
 
 packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 ```
-
+### Create connection to ensembl dataset and gene vectors
 ```{r}
 # Establish connection to Ensembl genes and RU17 genome dataset
 mart <- useMart("metazoa_mart",
@@ -1182,22 +1084,22 @@ mart <- useMart("metazoa_mart",
                 host = "https://metazoa.ensembl.org")
 
 # Pull GO ids associated with each genes in RU17
-attrs <- getBM(attributes = c("ensembl_gene_id", "transcript_length", "go_id", "namespace_1003"), mart = mart)
+attrs_y25 <- getBM(attributes = c("ensembl_gene_id", "transcript_length", "go_id", "namespace_1003"), mart = mart)
 
 # GO annotation table (IMPORTANT: Ensembl IDs only)
-gene2cat <- attrs %>%
-  filter(go_id != "") %>%
-  dplyr::select(ensembl_gene_id, go_id) %>%
+gene2cat_y25 <- attrs_y25 |>
+  dplyr::filter(go_id != "") |>
+  dplyr::select(ensembl_gene_id, go_id) |>
   as.data.frame()
 
 # Gene lengths (Ensembl IDs only)
-gene_lengths <- attrs %>%
-  group_by(ensembl_gene_id) %>%
-  summarise(transcript_length = max(transcript_length, na.rm = TRUE)) %>%
+gene_lengths_y25 <- attrs_y25 |>
+  group_by(ensembl_gene_id) |>
+  summarise(transcript_length = max(transcript_length, na.rm = TRUE)) |>
   as.data.frame()
 
-length_vector <- gene_lengths$transcript_length
-names(length_vector) <- gene_lengths$ensembl_gene_id
+length_vector_y25 <- gene_lengths_y25$transcript_length
+names(length_vector_y25) <- gene_lengths_y25$ensembl_gene_id
 
 ```
 
@@ -1212,26 +1114,21 @@ for (item in all_comps) {
   file_path <-paste0(deseq_out_dir, item)
   res_df <- read_csv(file_path, show_col_types = FALSE)
   
-  # ---left-join to add ENSEMBL IDs ---#
-  res_joined <- res_df %>%
-    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) |>
-    filter(!is.na(ensembl_gene_id),
-           !is.na(padj))
-  res_joined <- res_joined |>
+  # --- remove duplicate genes if present ---#
+  res_df <- res_df |>
     arrange(padj) |>
-    group_by(ensembl_gene_id) |>
-    slice(1) |>
-    ungroup()
+    distinct(gene_id, .keep_all = TRUE)
+  
   # --- Build binary DE genes vector to match only genes with lengths --- #
-  genes_vector <- as.integer(res_joined$padj < 0.05 & !is.na(res_joined$padj))
-  names(genes_vector) <- res_joined$ensembl_gene_id
+  genes_vector <- as.integer(res_df$padj < 0.05 & !is.na(res_df$padj))
+  names(genes_vector) <- res_df$gene_id
   
   # --- Restrict vectors to overlap w/ DESeq result universe --- #
   common_genes <- intersect(names(genes_vector),
-                            names(length_vector))
+                            names(length_vector_y25))
   
   sub_DE_genes_vector <- genes_vector[common_genes]
-  sub_length_vector <- length_vector[common_genes]
+  sub_length_vector <- length_vector_y25[common_genes]
   
   # --- Sanity check validation --- #
   stopifnot(length(sub_DE_genes_vector) == length(sub_length_vector))
@@ -1239,7 +1136,8 @@ for (item in all_comps) {
   
   # --- Save vectors to empty lists created --- #
   all_length_vectors[[item]] <- sub_length_vector
-  all_de_vector[[item]] <- sub_DE_genes_vector}
+  all_de_vector[[item]] <- sub_DE_genes_vector
+}
 ```
 
 ### Running Goseq()
@@ -1249,21 +1147,25 @@ for (item in all_comps) {
 goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results/"
 if(!dir.exists(goseq_out_dir)) dir.create(goseq_out_dir, recursive = TRUE)
 
-total_GO_terms <- 0
-
 # Create loop for each comparison
 for (item in all_comps) {
   # --- 1) Extract DE and length vectors needed for this iteration --- #
+  message("Running ", item)
+
   DE_genes_vector <- all_de_vector[[item]]
-  length_vector <- all_length_vectors[[item]]
+  length_vector_y25 <- all_length_vectors[[item]]
+  
+  message("Finished vectors")
   
   # --- 2) fit Probability Weighting Function (PWF) to account for gene length biases --- #
   pwf <- nullp(DE_genes_vector, 
-               bias.data = length_vector, 
+               bias.data = length_vector_y25, 
                plot.fit = FALSE) #rejects plots in console
+  message("Finished nullp")
+
   # --- 3) run goseq --- #
   GO.wall <- goseq::goseq(pwf = pwf,
-                   gene2cat = gene2cat,
+                   gene2cat = gene2cat_y25,
                    use_genes_without_cat = FALSE)
   # --- 4) apply multiple testing correction method of Benjamini-Hochberg (BH) to control the False Discovery Rate (FDR) (aka limit type II errors) --- #
   GO.wall$padj <- p.adjust(GO.wall$over_represented_pvalue, method = "BH")
@@ -1299,7 +1201,16 @@ for (item in all_comps) {
        colour = "-log10(p-value)", size = "Count") +
   theme_minimal()
  print(p)
- ggsave(clean_name, plot = p, width = 8, height = 6, dpi = 400)
+ ggsave(
+  filename = file.path(
+    goseq_out_dir,
+    paste0(clean_name, "_GOplot.png")
+  ),
+  plot = p,
+  width = 8,
+  height = 6,
+  dpi = 400
+)
 }
 
 ```

@@ -161,6 +161,8 @@ dds <- DESeqDataSet(
   se_17, 
   design = ~ Location * Month
 )
+#set DAF as the reference location
+dds$Location <- relevel(dds$Location, ref = "DAF")
 dds <- DESeq(dds)
 plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 ```
@@ -172,52 +174,67 @@ plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 library(readr)
 library(tibble)
 
-deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2/RU_17"
+deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2_RU17/"
 if(!dir.exists(deseq_out_dir)) dir.create(deseq_out_dir, recursive = TRUE)
 
-# Extract CMT Comparisons
-res17_Jul_vs_Jun_CMT <- results(dds, contrast = c("Month", "Jul", "Jun"), alpha = 0.05)
-res17_Aug_vs_Jun_CMT <- results(dds, contrast = c("Month", "Aug", "Jun"), alpha = 0.05)
-res17_Aug_vs_Jul_CMT <- results(dds, contrast = c("Month", "Aug", "Jul"), alpha = 0.05)
+# Extract site comparisons
+res_DAF_vs_CMT_Jul <- results(dds,
+  contrast = list(c("Location_CMT_vs_DAF", "LocationCMT.MonthJul")), alpha = 0.05)
 
-# Construct DAF contrasts to be Extracted
+res_DAF_vs_CMT_Aug <- results(dds,
+  contrast = list(c("Location_CMT_vs_DAF", "LocationCMT.MonthAug")), alpha = 0.05)
+
+# Extract CMT month comparisons (CMT is non-reference now, needs interaction sum)
+res_Jul_vs_Jun_CMT <- results(dds,
+  contrast = list(c("Month_Jul_vs_Jun", "LocationCMT.MonthJul")), alpha = 0.05)
+
+res_Aug_vs_Jun_CMT <- results(dds,
+  contrast = list(c("Month_Aug_vs_Jun", "LocationCMT.MonthAug")), alpha = 0.05)
+
+res_Aug_vs_Jul_CMT <- results(dds,
+  contrast = list(c("Month_Aug_vs_Jun", "LocationCMT.MonthAug"),
+                   c("Month_Jul_vs_Jun", "LocationCMT.MonthJul")), alpha = 0.05)
+
+# Construct full comparisons list
 deseq_comps <- list(
-  "res17_DAF_vs_CMT_Jun" = c("Location", "DAF", "CMT"),
-  "res17_DAF_vs_CMT_Jul" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthJul")),
-  "res17_DAF_vs_CMT_Aug" = list(c("Location_DAF_vs_CMT", "LocationDAF.MonthAug")),
-  "res17_Jul_vs_Jun_DAF" = list(c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
-  "res17_Aug_vs_Jun_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug")),
-  "res17_Aug_vs_Jul_DAF" = list(c("Month_Aug_vs_Jun", "LocationDAF.MonthAug"), c("Month_Jul_vs_Jun", "LocationDAF.MonthJul")),
-  "res17_Jul_vs_Jun_CMT" = res17_Jul_vs_Jun_CMT,
-  "res17_Aug_vs_Jun_CMT" = res17_Aug_vs_Jun_CMT,
-  "res17_Aug_vs_Jul_CMT" = res17_Aug_vs_Jul_CMT)
+  "res_DAF_vs_CMT_Jun" = c("Location", "DAF", "CMT"),
+  "res_DAF_vs_CMT_Jul" = res_DAF_vs_CMT_Jul,
+  "res_DAF_vs_CMT_Aug" = res_DAF_vs_CMT_Aug,
 
+  "res_Jul_vs_Jun_DAF" = c("Month", "Jul", "Jun"),
+  "res_Aug_vs_Jun_DAF" = c("Month", "Aug", "Jun"),
+  "res_Aug_vs_Jul_DAF" = c("Month", "Aug", "Jul"),
+
+  "res_Jul_vs_Jun_CMT" = res_Jul_vs_Jun_CMT,
+  "res_Aug_vs_Jun_CMT" = res_Aug_vs_Jun_CMT,
+  "res_Aug_vs_Jul_CMT" = res_Aug_vs_Jul_CMT
+)
 for (item in names(deseq_comps)) {
   message(paste("Processing:", item))
   if (inherits(deseq_comps[[item]], "DESeqResults")) {
-    res17_df <- as.data.frame(deseq_comps[[item]])
+    res_df <- as.data.frame(deseq_comps[[item]])
   } else {
-    res17_obj <- results(dds, contrast = deseq_comps[[item]], alpha = 0.05)
+    res_obj <- results(dds, contrast = deseq_comps[[item]], alpha = 0.05)
     # --- Assign it to global environment --- #
-    assign(item, res17_obj, envir = .GlobalEnv)
-    res17_df <- as.data.frame(res17_obj)
+    assign(item, res_obj, envir = .GlobalEnv)
+    res_df <- as.data.frame(res_obj)
   }
 }
 all_comps <- c(
   #  --- Site-to-Site Comparisons --- #
-  "res17_DAF_vs_CMT_Jun",
-  "res17_DAF_vs_CMT_Jul",
-  "res17_DAF_vs_CMT_Aug",
+  "res_DAF_vs_CMT_Jun",
+  "res_DAF_vs_CMT_Jul",
+  "res_DAF_vs_CMT_Aug",
   
   # ---DAF Comparisons ---#
-  "res17_Jul_vs_Jun_DAF",
-  "res17_Aug_vs_Jun_DAF",
-  "res17_Aug_vs_Jul_DAF",
+  "res_Jul_vs_Jun_DAF",
+  "res_Aug_vs_Jun_DAF",
+  "res_Aug_vs_Jul_DAF",
   
   # --- CMT Comparisons --- #
-  "res17_Jul_vs_Jun_CMT",
-  "res17_Aug_vs_Jun_CMT",
-  "res17_Aug_vs_Jul_CMT"
+  "res_Jul_vs_Jun_CMT",
+  "res_Aug_vs_Jun_CMT",
+  "res_Aug_vs_Jul_CMT"
 )
 
 #Convert row names to dedicated column and save as .csv in dir
@@ -284,9 +301,6 @@ ggplot(data.frame(
 ### Run DESeq2
 
 ```{r}
-# Estimate dispersion and fit negative binomial models
-dds <- DESeq(dds)
-
 # Extract default DESeq2 results
 results <- results (dds)
 
@@ -409,7 +423,7 @@ vsd$Month <- factor(vsd$Month, levels = c("Jun", "Jul", "Aug"))
 vsd$Location <- factor(vsd$Location, levels = c("DAF", "CMT"))
 ord <- order(vsd$Location, vsd$Month)
 
-res_df <- as.data.frame(results(dds, name = "Location_DAF_vs_CMT"))
+res_df <- as.data.frame(results(dds, name = "Location_CMT_vs_DAF"))
 res_df$gene_id <- rownames(res_df)
 
 #Filter out top 50 significantly differentially expressed genes
@@ -1018,42 +1032,6 @@ labeledHeatmap(
 table(net$colors)
 ```
 
-### Matching Genes
-
-```{r}
-library(readr)
-library(dplyr)
-library(stringr)
-
-#Load and strip gene and protein id from 2017 RU (reference mapping table)
-ru17_gene_protein <- read_csv("/work/clh162/OysterRNA24/DEG_analysis/GO/Cvi_RU17_ncbi_dataset/data/GCF_002022765.2/Cvi_RU17_gene_proteinID.csv",
-                              col_names = c("gene", "protein_id"))
-
-# Load Diamond output results
-diamond_cols <- c(
-    "RU25_gene", "protein_id", "pident", "length", "mismatch",
-  "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore") #defining column names
-
-#contains ortholog prediction data
-diamond_out <- read_tsv("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/diamond_results.txt", col_names = diamond_cols)
-
-#Match genes naming
-diamond_out <-diamond_out |>
-  mutate(RU25_gene = str_replace(RU25_gene, "\\.model\\.", ".TU."))
-
-#Joining genes id and protein
-#For each RU25 gene match, find RU17 gene name using protein_id
-joined_gene_ids <- diamond_out |>
-  left_join(ru17_gene_protein, by = "protein_id") |>
-  transmute(RU25_gene, ensembl_gene_id = gene)
-
-#Save output
-write_csv(
-  joined_gene_ids, 
-  "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv"
-)
-```
-
 ### GO: Load All Necessary Packages
 
 ```{r}
@@ -1080,19 +1058,25 @@ if (length(pkgs_missing) > 0) {
 ```
 
 ```{r}
-# Load Libraries
+# troubleshooting downloads
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("biomaRt")
 
-library(tidyverse)
-library(dplyr)
+# Load Libraries
 library(biomaRt)
 library(DESeq2)
 library(AnnotationDbi)
 library(goseq)
 library(ggplot2)
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyverse)
 
 packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 ```
-
+### Create connection to ensembl dataset and gene vectors
 ```{r}
 # Establish connection to Ensembl genes and RU17 genome dataset
 mart <- useMart("metazoa_mart",
@@ -1100,22 +1084,23 @@ mart <- useMart("metazoa_mart",
                 host = "https://metazoa.ensembl.org")
 
 # Pull GO ids associated with each genes in RU17
-attrs <- getBM(attributes = c("ensembl_gene_id", "transcript_length", "go_id", "namespace_1003"), mart = mart)
+attrs_ru17 <- getBM(attributes = c("ensembl_gene_id", "transcript_length", "go_id", "namespace_1003"), mart = mart)
 
 # GO annotation table (IMPORTANT: Ensembl IDs only)
-gene2cat <- attrs %>%
-  filter(go_id != "") %>%
-  dplyr::select(ensembl_gene_id, go_id) %>%
+gene2cat_ru17 <- attrs_ru17 |>
+  dplyr::filter(go_id != "") |>
+  dplyr::select(ensembl_gene_id, go_id) |>
   as.data.frame()
 
 # Gene lengths (Ensembl IDs only)
-gene_lengths <- attrs %>%
-  group_by(ensembl_gene_id) %>%
-  summarise(transcript_length = max(transcript_length, na.rm = TRUE)) %>%
+gene_lengths_ru17 <- attrs_ru17 |>
+  group_by(ensembl_gene_id) |>
+  summarise(transcript_length = max(transcript_length, na.rm = TRUE)) |>
   as.data.frame()
 
-length_vector <- gene_lengths$transcript_length
-names(length_vector) <- gene_lengths$ensembl_gene_id
+length_vector_ru17 <- gene_lengths_ru17$transcript_length
+names(length_vector_ru17) <- gene_lengths_ru17$ensembl_gene_id
+
 ```
 
 ```{r}
@@ -1129,26 +1114,21 @@ for (item in all_comps) {
   file_path <-paste0(deseq_out_dir, item)
   res_df <- read_csv(file_path, show_col_types = FALSE)
   
-  # ---left-join to add ENSEMBL IDs ---#
-  res_joined <- res_df %>%
-    left_join(joined_gene_ids, by = c("gene_id" = "RU25_gene")) |>
-    filter(!is.na(ensembl_gene_id),
-           !is.na(padj))
-  res_joined <- res_joined |>
+  # --- remove duplicate genes if present ---#
+  res_df <- res_df |>
     arrange(padj) |>
-    group_by(ensembl_gene_id) |>
-    slice(1) |>
-    ungroup()
+    distinct(gene_id, .keep_all = TRUE)
+  
   # --- Build binary DE genes vector to match only genes with lengths --- #
-  genes_vector <- as.integer(res_joined$padj < 0.05 & !is.na(res_joined$padj))
-  names(genes_vector) <- res_joined$ensembl_gene_id
+  genes_vector <- as.integer(res_df$padj < 0.05 & !is.na(res_df$padj))
+  names(genes_vector) <- res_df$gene_id
   
   # --- Restrict vectors to overlap w/ DESeq result universe --- #
   common_genes <- intersect(names(genes_vector),
-                            names(length_vector))
+                            names(length_vector_ru17))
   
   sub_DE_genes_vector <- genes_vector[common_genes]
-  sub_length_vector <- length_vector[common_genes]
+  sub_length_vector <- length_vector_ru17[common_genes]
   
   # --- Sanity check validation --- #
   stopifnot(length(sub_DE_genes_vector) == length(sub_length_vector))
@@ -1156,61 +1136,81 @@ for (item in all_comps) {
   
   # --- Save vectors to empty lists created --- #
   all_length_vectors[[item]] <- sub_length_vector
-  all_de_vector[[item]] <- sub_DE_genes_vector}
+  all_de_vector[[item]] <- sub_DE_genes_vector
+}
 ```
 
 ### Running Goseq()
 
 ```{r fig.width=10, fig.height=12}
-# Set path
+# set path
 goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results/"
 if(!dir.exists(goseq_out_dir)) dir.create(goseq_out_dir, recursive = TRUE)
-
-total_GO_terms <- 0
 
 # Create loop for each comparison
 for (item in all_comps) {
   # --- 1) Extract DE and length vectors needed for this iteration --- #
+  message("Running ", item)
+
   DE_genes_vector <- all_de_vector[[item]]
-  length_vector <- all_length_vectors[[item]]
+  length_vector_ru17 <- all_length_vectors[[item]]
   
-  # --- 2) Fit Probability Weighting Function (PWF) to account for gene length biases --- #
+  message("Finished vectors")
+  
+  # --- 2) fit Probability Weighting Function (PWF) to account for gene length biases --- #
   pwf <- nullp(DE_genes_vector, 
-               bias.data = length_vector, 
+               bias.data = length_vector_ru17, 
                plot.fit = FALSE) #rejects plots in console
-  # --- 3) Run goseq --- #
+  message("Finished nullp")
+
+  # --- 3) run goseq --- #
   GO.wall <- goseq::goseq(pwf = pwf,
-                   gene2cat = gene2cat,
+                   gene2cat = gene2cat_ru17,
                    use_genes_without_cat = FALSE)
-  # --- 4) Apply multiple testing correction method of Benjamini-Hochberg (BH) to control the False Discovery Rate (FDR) (aka limit type II errors) --- #
+  # --- 4) apply multiple testing correction method of Benjamini-Hochberg (BH) to control the False Discovery Rate (FDR) (aka limit type II errors) --- #
   GO.wall$padj <- p.adjust(GO.wall$over_represented_pvalue, method = "BH")
   # --- 5) Filter for significant terms (e.g., padj < 0.05) --- #
   enriched_GO <-GO.wall |>
     filter(padj < 0.05)
     # zero GO terms are significantly abundant
-  # --- 6) Save goseq results to .csv file --- #
+  # --- 6) save goseq results to .csv file --- #
   clean_name <- sub("^res_", "", item)
   file_out_path <- file.path(goseq_out_dir, paste0("GO_", clean_name, ".csv")) #define the way path is written out
   write_csv(GO.wall, file = file_out_path)
   
   # Plot top 10 significant GO terms
  p <- GO.wall |>
-  mutate(hitsPerc = (numDEInCat * 100 / numInCat) |>
-           arrange(over_represented_pvalue) |>
-           slice_head(n=10) |>
-           mutate(
-             term = factor(term, levels = rev(term))),
-         log10_p = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))) |>
+  mutate(
+    hitsPerc = (numDEInCat * 100) / numInCat,
+    log10_p  = -log10(pmax(over_represented_pvalue, .Machine$double.xmin))
+  ) |>
+  # 2. sort the entire data frame by the p-value
+  arrange(over_represented_pvalue) |>
+  # 3. keep only the top 10 most significant terms
+  slice_head(n = 10) |>
+  # 4. lock in the factor levels so ggplot preserves the order on the Y-axis
+  mutate(term = factor(term, levels = rev(unique(term)))) |>
+  # 5. pass it cleanly into ggplot
   ggplot(aes(x = hitsPerc, 
-             y = reorder(term, log10_p),
+             y = term,             # Handled reordering in step 4 via factor levels
              colour = log10_p, 
-             size = numInCat)) +    
+             size = numInCat)) +   
   geom_point() +
   expand_limits(x = 0) +
   labs(title = clean_name, x = "Hits (%)", y = "GO term",
        colour = "-log10(p-value)", size = "Count") +
   theme_minimal()
  print(p)
+ ggsave(
+  filename = file.path(
+    goseq_out_dir,
+    paste0(clean_name, "_GOplot.png")
+  ),
+  plot = p,
+  width = 8,
+  height = 6,
+  dpi = 400
+)
 }
 
 ```
