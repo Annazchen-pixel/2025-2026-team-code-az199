@@ -5,7 +5,7 @@ date: "2026-07-07"
 output: html_document
 ---
 
-# Oyster Data Analysis
+# Rutgers 2017 Oyster Data Analysis
 
 ## Set Ups
 
@@ -13,14 +13,15 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Load Gene Count Data
+### SE: Load Gene Count Data
 
 ```{r}
-
+# SE = Summarized Experiment
 #################### count - number of reads mapped/gene
 ######### a measure of gene expression
 
 library(stringr)
+library(dplyr)
 
 # read the gene count files
 old_counts <- read.delim("/work/clh162/henry/results/cv2017/featureCounts_counts/counts_matrix.txt", comment.char = "#", check.names = FALSE, row.names = 1 )
@@ -51,7 +52,7 @@ write.table(
 
 ```
 
-### Load and Process Metadata
+### SE: Load and Process Metadata
 
 ```{r}
 ####################### colData - metadata, extra info ex. 
@@ -67,7 +68,7 @@ coldata_17_raw <- read_excel("/work/clh162/OysterRNA24/xRNA for BC Summer 2024.x
 dim(coldata_17_raw) #view dimension
 ```
 
-### Clean and Resize Metadata to Match Gene old_counts Data
+### SE: Clean and Resize Metadata to Match Gene old_counts Data
 
 ```{r}
 # convert coldata_17_raw into standard R frame and rename: coldata_17
@@ -90,7 +91,7 @@ all(colnames(old_cmatrix) == rownames(coldata_17)) # matching check
 View(coldata_17) #Visualize
 ```
 
-### Assemble Summarized Experiment
+### SE: Assemble Summarized Experiment
 
 ```{r}
 
@@ -114,7 +115,7 @@ dir.create("data", showWarnings = FALSE)
 saveRDS(se_17, "data/RU17_se.rds")
 ```
 
-### Generate DESeqDataSet
+### DESeq: Generate DESeqDataSet
 
 ```{r fig.width= 10, fig.height = 8}
 
@@ -167,21 +168,23 @@ dds <- DESeq(dds)
 plotDispEsts(dds, main = "Dispersion Estimates: Design ~Location * Month")
 ```
 
-### Extract, Organize, and Name Data
+### DESeq: Extract, Organize, and Name Data
 
 ```{r}
-# load necessary packages
+# load packages
 library(readr)
 library(tibble)
 
-deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2_RU17/"
+deseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/DESeq2_Rutgers17/"
 if(!dir.exists(deseq_out_dir)) dir.create(deseq_out_dir, recursive = TRUE)
 
 # Extract site comparisons
-res_DAF_vs_CMT_Jul <- results(dds,
+res_CMT_vs_DAF_Jun <- results(dds, contrast = c("Location", "CMT", "DAF"), alpha = 0.05)
+
+res_CMT_vs_DAF_Jul <- results(dds,
   contrast = list(c("Location_CMT_vs_DAF", "LocationCMT.MonthJul")), alpha = 0.05)
 
-res_DAF_vs_CMT_Aug <- results(dds,
+res_CMT_vs_DAF_Aug <- results(dds,
   contrast = list(c("Location_CMT_vs_DAF", "LocationCMT.MonthAug")), alpha = 0.05)
 
 # Extract CMT month comparisons (CMT is non-reference now, needs interaction sum)
@@ -197,9 +200,9 @@ res_Aug_vs_Jul_CMT <- results(dds,
 
 # Construct full comparisons list
 deseq_comps <- list(
-  "res_DAF_vs_CMT_Jun" = c("Location", "DAF", "CMT"),
-  "res_DAF_vs_CMT_Jul" = res_DAF_vs_CMT_Jul,
-  "res_DAF_vs_CMT_Aug" = res_DAF_vs_CMT_Aug,
+  "res_CMT_vs_DAF_Jun" = res_CMT_vs_DAF_Jun,
+  "res_CMT_vs_DAF_Jul" = res_CMT_vs_DAF_Jul,
+  "res_CMT_vs_DAF_Aug" = res_CMT_vs_DAF_Aug,
 
   "res_Jul_vs_Jun_DAF" = c("Month", "Jul", "Jun"),
   "res_Aug_vs_Jun_DAF" = c("Month", "Aug", "Jun"),
@@ -222,9 +225,9 @@ for (item in names(deseq_comps)) {
 }
 all_comps <- c(
   #  --- Site-to-Site Comparisons --- #
-  "res_DAF_vs_CMT_Jun",
-  "res_DAF_vs_CMT_Jul",
-  "res_DAF_vs_CMT_Aug",
+  "res_CMT_vs_DAF_Jun",
+  "res_CMT_vs_DAF_Jul",
+  "res_CMT_vs_DAF_Aug",
   
   # ---DAF Comparisons ---#
   "res_Jul_vs_Jun_DAF",
@@ -246,7 +249,7 @@ for (item in all_comps) {
     paste0(deseq_out_dir, item))}
 ```
 
-### Remove Unexpressed Genes
+### DESeq: Remove Unexpressed Genes
 
 ```{r}
 #Load required packages
@@ -264,7 +267,7 @@ sum(keep)
 dds <- dds[keep, ]
 ```
 
-### Adjust Library Size Differences
+### DESeq: Adjust Library Size Differences
 
 ```{r}
 #Library size = the total num of reads assigned to genes/sample
@@ -287,6 +290,8 @@ colData(se_17) |>
   theme(axis.text.x = element_text(angle = 45, 
                                    hjust = 1, 
                                    vjust = 1))
+# store size factors into  a DESeqDataSet for normalization
+dds <- estimateSizeFactors(dds)
 
 #Compare size factors to raw library sizes
 ggplot(data.frame(
@@ -298,7 +303,7 @@ ggplot(data.frame(
   geom_point(size = 3) + theme_bw() 
 ```
 
-### Run DESeq2
+### DESeq: Run DESeq2
 
 ```{r}
 # Extract default DESeq2 results
@@ -311,11 +316,11 @@ summary(results)
 results0.01 <- results(dds, alpha = 0.01)
 summary(results0.01)
 
-#View moodel coefficients
+#View model coefficients
 resultsNames(dds)
 ```
 
-### Transform Data
+### DESeq: Transform Data
 
 ```{r}
 #Examine mean-SD relationships
@@ -328,7 +333,7 @@ vsd <- DESeq2::vst(dds, blind = FALSE)
 meanSdPlot(assay(vsd), ranks = FALSE)
 ```
 
-### Create PCAs
+### Statistics and Visualizations: Create PCAs
 
 ```{r}
 #Install and load necessary packages
@@ -365,19 +370,20 @@ ggplot(pcaData, aes(x = PC1, y = PC2, label = Sample_ID)) +
   scale_color_manual(values = c(Jun = "red", Jul = "orange", Aug = "yellow"))
 ```
 
-### Volcano Plot
+### Statistics and Visualizations: Volcano Plot
 
 ```{r fig.width = 10, fig.height = 8}
+# load packages
 library(dplyr)
 library(ggplot2)
-
+# loop through each differential expression comparison 
 for (item in all_comps) {
-  res_df <- as.data.frame(get(item)) |>
-    tibble::rownames_to_column("gene_id") |>
+  res_df <- as.data.frame(get(item)) |> # convert result to data frame
+    tibble::rownames_to_column("gene_id") |> # add gene IDs as a column
     mutate(
       significant = ifelse(
-        !is.na(padj) &
-          padj < 0.05 &
+        !is.na(padj) & # adjusted pvalue is not missing
+          padj < 0.05 & # adjusted pvalue is not less than 0.05
           abs(log2FoldChange) >=1,
         "Significant",
         "Not significant"
@@ -391,34 +397,70 @@ for (item in all_comps) {
       color = significant
     )
   ) +
-    geom_point(alpha = 0.7, size = 2) +
-    theme_bw() +
+    geom_point(alpha = 1, size = 2) +
+    geom_text_repel(
+    data = label_df,
+    aes(label = gene_id),
+    size = 5,
+    fontface = "bold",
+    color = "black",
+    box.padding = 0.5,
+    point.padding = 0.3,
+    max.overlaps = Inf,
+    arrow = arrow(length = unit(0.2, "npc"), type = "closed")
+  ) +
+    scale_color_manual(
+      values = c(
+        "Significant" = "red", 
+        "Not significant" = "blue"
+      )
+    ) +
+    # horizontal threshold line
+    geom_hline(
+      yintercept = -log10(0.05),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    # vertical threshold line
+    geom_vline(
+      xintercept = c(-1,1),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    coord_cartesian(
+      xlim = c(-6, 6),
+      ylim = c(0, 8)
+    ) +
+    theme_bw(base_size = 16) +
+    theme(
+      plot.title = element_text(size = 28, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 28, face = "bold"),
+      axis.text = element_text(size = 28)
+    ) +
     labs(
       title = paste("Volcano Plot:", sub("^res_", "", item)),
       x = "log2 Fold Change",
       y = "-log10 adjusted p-value",
-      color = "Result"
+      color = "Significance"
     )
 
   print(p)
 }
 ```
 
-### Create Heat Maps and Clustering
+### Statistics and Visualizations: Create Heat Maps and Clustering
 
 ```{r, fig.width=8, fig.height=6}
-
-# Load necessary packages
+# load packages
 library(ComplexHeatmap)
 library(matrixStats)
 library(dplyr)
 library(circlize)
 
+# create color series to be used
 color_rb <- colorRamp2(c(-3,0,3), c("blue", "white", "red"))
-#Create vector of comparisons to be looped through
-comps <- "Location_DAF_vs_CMT"
 
-#Set factor levels 
+# set factor levels 
 vsd$Month <- factor(vsd$Month, levels = c("Jun", "Jul", "Aug"))
 vsd$Location <- factor(vsd$Location, levels = c("DAF", "CMT"))
 ord <- order(vsd$Location, vsd$Month)
@@ -426,24 +468,26 @@ ord <- order(vsd$Location, vsd$Month)
 res_df <- as.data.frame(results(dds, name = "Location_CMT_vs_DAF"))
 res_df$gene_id <- rownames(res_df)
 
-#Filter out top 50 significantly differentially expressed genes
+# filter out top 50 significantly differentially expressed genes
   topgenes <- res_df|>
     filter(
       !is.na(padj), #remove genes with missing adjusted p-values
       padj < 0.01, #statistically significant
       abs(log2FoldChange)>= 2 #at least 4-fold change 
     ) |>
-    arrange(padj) |> # sort from most ot least significant
+    arrange(padj) |> # sort from most to least significant
     slice_head(n = 50) |> #grab the top 50 most significant
     pull(gene_id) #grab the gene ids
 
-  # Z-score each gene
-  mat <- assay(vsd)[topgenes,]
-  mat <-t(scale(t(mat)))
-  mat <- mat[, ord]
+  mat <- assay(vsd)[topgenes,] # extract expression value for topgenes
+  mat <-t(scale(t(mat))) # z-score each gene
+  mat <- mat[, ord] # reorder
+  
+  #limit extreme z-score for heat map scale
   mat[mat< -3] <- -3
   mat[mat> 3]  <- 3
     
+  # create heat map annotation
   ha <- HeatmapAnnotation(
     Location = vsd$Location[ord],
     Month = vsd$Month[ord],
@@ -456,7 +500,8 @@ res_df$gene_id <- rownames(res_df)
         Jul = "orange",
         Aug = "forestgreen"
       )))
-  #Create heatmap sets 
+  
+  # create heat map sets 
 Heatmap(
   mat,
   col = color_rb,
@@ -470,21 +515,23 @@ Heatmap(
   column_title = "Top DE Genes: DAF vs CMT"
     )
 
-# Pairwise Month Heatmaps
-loc_loop <- c("CMT", "DAF")
+# pairwise month heat maps
+loc_loop <- c("DAF", "CMT")
 month_loop <- list(
   c("Jun", "Jul"),
   c("Jun", "Aug"),
   c("Jul", "Aug")
 )
 
-#Start the pairwise comparison loop
+# loop through each location
 for (loc in loc_loop) {
   dds_heat <- dds[, dds$Location == loc]
   dds_heat$Month <- droplevels(dds_heat$Month)
   design(dds_heat) <- ~ Month
   dds_heat <- DESeq(dds_heat)
-  vsd_heat <- vst(dds_heat, blind = FALSE)
+  vsd_heat <- vst(dds_heat, blind = FALSE) # apply variance stabilizing transformation
+  
+  # loop through each month comparison
   for(obj in month_loop) {
     heat_month1 <- obj[1]
     heat_month2 <- obj[2]
@@ -496,14 +543,15 @@ for (loc in loc_loop) {
     res_df$gene_id <- rownames(res_df)
     topgenes <- res_df|>
     filter(
-      !is.na(padj), #remove genes with missing adjusted p-values
-      padj < 0.01, #statistically significant
-      abs(log2FoldChange)>= 2 #at least 4-fold change 
+      !is.na(padj), # remove genes with missing adjusted p-values
+      padj < 0.01, # statistically significant
+      abs(log2FoldChange)>= 2 # at least 4-fold change 
     ) |>
-    arrange(padj) |> # sort from most ot least significant
-    slice_head(n = 50) |> #grab the top 50 most significant
-    pull(gene_id) #grab the gene ids
+    arrange(padj) |> # sort from most to least significant
+    slice_head(n = 50) |> # grab the top 50 most significant
+    pull(gene_id) # grab the gene ids
     
+    # order samples by month
     heat_ord <- order(vsd_heat$Month)
     
     mat <- assay(vsd_heat)[topgenes,]
@@ -520,7 +568,7 @@ for (loc in loc_loop) {
             Jul = "orange",
             Aug = "forestgreen")))
     
-    #Create HeatMaps
+    # create heat maps
     h_map <- Heatmap(
       mat, 
       col = color_rb, 
@@ -534,18 +582,18 @@ for (loc in loc_loop) {
         heat_month1, 
         "vs.",
         heat_month2
-      )
-    )
+      ))
     print(h_map)
-  }
-}
+  }}
 ```
 
-### Pairwise comparison MA Plots
+### Statistics and Visualization: Pairwise comparison MA Plots
 
 ```{r, fig.width=8, fig.height=6}
-install.packages("ashr")
- 
+# install package
+install.packages("ashr") 
+
+# loop through comparisons for MA-plot : log fold change vs. average expression signal with all the genes
 for (item in all_comps) {
   res_ma <- get(item)
   plotMA(
@@ -556,13 +604,15 @@ for (item in all_comps) {
 }
 ```
 
-### Plot MA with LFC Shrinkage
+### Statistics and Visualization: Plot MA with LFC Shrinkage
 
 ```{r}
+# view names of dds results
 resultsNames(dds)
 
 coef_names <- resultsNames(dds)[-1]
 
+# loop through all coef_names = names of estimated model coefficients ( the specific effect sizes and comparisons)
 for (item in coef_names) {
   LFC <- lfcShrink(dds, coef = item, type = "apeglm")
   plotMA(
@@ -589,7 +639,7 @@ for (item in coef_names) {
 }
 ```
 
-### Load Environmental Data
+### Environmental Factors: Load Environmental Data
 
 ```{r}
 #Load package needed
@@ -601,8 +651,8 @@ salinity <- read_excel("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Salini
 dis_ox <- read_excel("/work/clh162/Data+/Anna/2025-2026-team-code-az199/DOsensor_2024.xlsx")
 temp <- read_excel("/work/clh162/Data+/Anna/2025-2026-team-code-az199/Salinity_2024.xlsx")
 
-#Standardize data
-# Convert all environmental dataset date column to DateTime format
+# standardize data
+# convert all environmental dataset date column to DateTime format
 ph$DateTime <- as.Date(ph$DateTime)
 salinity$DateTime <- as.Date(salinity$DateTime)
 dis_ox$DateTime <- as.Date(dis_ox$DateTime)
@@ -654,10 +704,13 @@ env_master <- ph_avg |>
 View(env_master) # Visualize resulting data table
 ```
 
-### Extract and Convert PCA Dates from Sample ID
+### Environmental Factors: Extract and Convert PCA Dates from Sample ID
 
 ```{r}
+# load package
 library(stringr)
+
+# load by dates and combine data
 pcaData <- pcaData |>
   mutate(CollectionDate = case_when(
     str_detect(Sample_ID, "20Jun24|21Jun24") ~ as.Date("2024-06-20"),
@@ -667,9 +720,10 @@ pcaData <- pcaData |>
 pca_mergdat <- left_join(pcaData, env_master, by = "CollectionDate")
 ```
 
-### Environmental PCAs For Loops
+### Environmental Factors: PCAs
 
 ```{r fig.width = 8, fig.height = 6}
+
 # Create list of variables to loop through
 env_factors <- c("pH", "Salinity", "DO", "Temperature")
 
@@ -692,9 +746,15 @@ for (item in env_factors) {
 }
 ```
 
-### Correlations Between Environmental Factors
+### Environmental Factors: Correlations Between Environmental Factors
 
 ```{r}
+# load packages
+library(ComplexHeatmap)
+library(circlize)
+library(grid)
+
+# take the average of the daily values
 ph_daily <- ph |>
   group_by(DateTime) |>
   summarise(pH = mean(pH, na.rm = TRUE))
@@ -708,6 +768,7 @@ temp_daily <- temp |>
   group_by(DateTime) |>
   summarise(Temperature = mean(Temp_C, na.rm = TRUE))
 
+# joint list
 env_corr <- ph_daily |>
   left_join(salin_daily, by = "DateTime") |>
   left_join(do_daily, by = "DateTime") |>
@@ -715,42 +776,72 @@ env_corr <- ph_daily |>
 env_corr <-env_corr |>
   filter(DateTime >= as.Date("2024-06-01"),
          DateTime <= as.Date("2024-08-31"))
+# Spline interpolation for missing values
+env_corr <- env_corr |>
+  arrange(DateTime)
+
+# temperature and salinity have missing values
+
+# Salinity
+good_sal <- !is.na(env_corr$Salinity)
+env_corr$Salinity <- spline(
+  x = as.numeric(env_corr$DateTime[good_sal]),
+  y = env_corr$Salinity[good_sal],
+  xout = as.numeric(env_corr$DateTime),
+  method = "natural"
+)$y
+
+# Temperature
+good_temp <- !is.na(env_corr$Temperature)
+env_corr$Temperature <- spline(
+  x = as.numeric(env_corr$DateTime[good_temp]),
+  y = env_corr$Temperature[good_temp],
+  xout = as.numeric(env_corr$DateTime),
+  method = "natural"
+)$y
 env_numeric <- env_corr |>
   dplyr::select(pH, Salinity, DO, Temperature)
 env_corr_matrix <- cor(env_numeric, 
                        method = "spearman",
                        use = "complete.obs")
 
-#Set color degrations
-corr_colors <- colorRamp2(c(-1, 0, 1), c("forestgreen", "white", "orange"))
-
-#Generate Correlation Heatmap for Environmental Factors
+# vectorized custom color function excluding perfect 1.0 and -1.0
+corr_colors <- colorRamp2(
+  # Default everything to light grey
+  c(-1, -0.3, 0, 0.3, 1),
+  c("red", "coral", "white", "lightblue", "blue"))
+  
+# generate the Correlation Heatmap
 env_corr_map <- Heatmap(
   env_corr_matrix, 
   name = "Spearman\nCorrelation (r)",
-  col = corr_colors,
+  col = corr_colors, # Custom color function
   show_row_names = TRUE,
   show_column_names = TRUE, 
   cluster_columns = TRUE,
   cluster_rows = TRUE, 
+  show_column_dend = FALSE, 
+  show_row_dend = FALSE,
   column_title = "Correlation Between Environmental Factors",
+  
+  # custom cell function: Print ALL numbers with font size 26
   cell_fun = function(j, i, x, y, width, height, fill) {
-    grid.text(sprintf("%.2f", env_corr_matrix[i,j]), x, y, gp = gpar(fontsize = 10))
-  },
+
+  r <- env_corr_matrix[i, j]
+
+  if (abs(r) > 0.3 || i == j) {
+    grid.text(
+      sprintf("%.2f", r),
+      x, y,
+      gp = gpar(fontsize = 26, fontface = "bold")
+    )
+  }},
+  # legend parameters
   heatmap_legend_param = list(
-    at= c(-1, -0.5, 0, 0.5, 1),
-    labels = c("-1.0", "-0.5", "0.0", "0.5", "1.0")
-  )
+    at = c(-1, -0.3, 0, 0.3, 1),
+    labels = c("-1.0", "-0.3", "0.0", "0.3", "1.0"))
 )
 print(env_corr_map)
-
-#  0.5 correlation between pH & Salinity (interesting), visualize through scatterplot
-summary(env_corr)
-cor.test(env_corr$pH, env_corr$Salinity)
-ggplot(env_corr, aes(Salinity, pH)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_minimal()
 
 ```
 
@@ -771,34 +862,29 @@ allowWGCNAThreads()
 
 ```{r}
 
-#Variance stabilizing transformation
-vsd <- DESeq2::vst(dds, blind = FALSE)
-
-# 1. Prepare data
-# Need raw count data --> loaded into old_counts
 expr <- assay(vsd)   #expression matrix
 
-# Filter for top 8000 Median Absolute Deviation (MAD) genes to limit modules and eliminate noises
+# filter for top 8000 Median Absolute Deviation (MAD) genes to limit modules and eliminate noises
 gene_mad <- rowMads(expr)
 top8000 <- names(sort(gene_mad, decreasing = TRUE)[1:8000])
 expr_filtered <- expr[top8000, ]
 
-# Get metadata
+# get metadata
 pheno <- as.data.frame(colData(vsd))
 feature <- as.data.frame(rowData(vsd))[top8000,  , drop = FALSE]
 
-# Transpose the data
+# transpose the data
 datexpr <- t(expr_filtered)
 
 
-# Row names and column names check
+# row names and column names check
 dim(datexpr)
 head(rownames(datexpr))
 head(colnames(datexpr))
 
-#Check for missing values
+# check for missing values
 gsg <- goodSamplesGenes(datexpr, verbose = 3)
-gsg$allOK #should return TRUE to move on
+gsg$allOK # should return TRUE to move on
 ```
 
 ### WGCNA: Cluster Samples
@@ -821,14 +907,14 @@ plot(samptree,
 ### WGCNA: Adjacency: Pairwise Connection
 
 ```{r}
-# Nodes are considered "connected" if they have significant pairwise correlation association
+##################### nodes are considered "connected" if they have significant pairwise correlation association
 
-#Determine appropriate parameter to calculate adjacency matrix
+# determine appropriate parameter to calculate adjacency matrix
 
-#Stanadard range recommended by WGCNA
+# standard range recommended by WGCNA
 powers <- c(1:10, seq(12, 20, by = 2))
 
-#Calculate scale-free topology statistics
+# calculate scale-free topology statistics
 sft <- pickSoftThreshold(datexpr, #sample x genes matrix
                          powerVector = powers, 
                          verbose = 5) #print updated progress
@@ -875,7 +961,7 @@ text(
 
 ```{r}
 library(WGCNA) # Load package
-softPower <- 3 #pick soft_thresholding power based on Scale Independence graph
+softPower <- 4 #pick soft_thresholding power based on Scale Independence graph
 ```
 
 ### WGCNA: Contruct Network and Detect Modules
@@ -905,9 +991,10 @@ net <- blockwiseModules(
 # Test with different parameters, specifically with deepSplit and mergeCutHeight to produce ~12 modules
 ```
 
-### Convert Numeric Labels to Colors for Visualization
+### WGCNA: Convert Numeric Labels to Colors for Visualization
 
 ```{r}
+# view the colors
 table(net$colors)
 
 merged_colors <- labels2colors(net$colors)
@@ -918,7 +1005,7 @@ table(merged_colors)
 table(unmerged_colors)
 ```
 
-### Plotting Dendrograms
+### WGCNA: Plotting Dendrograms
 
 ```{r}
 #Plot the dendrograms with labels and given parameters
@@ -934,7 +1021,7 @@ plotDendroAndColors(
 )
 ```
 
-### Module Eigengenes Identification
+### WGCNA: Module Eigengenes Identification
 
 ```{r}
 #Create eigengenes list
@@ -943,7 +1030,7 @@ MEs <- MElist$eigengenes
 head(MEs)
 
 #Save the network
-saveRDS(net, "data/WGCNA_network.rds")
+saveRDS(net, "data/WGCNA_network_RU17.rds")
 ```
 
 ### WGCNA: Module Merging
@@ -972,7 +1059,7 @@ mergedColors = merge$colors
 mergeMEs = merge$newMEs
 ```
 
-### External Trait Matching
+### WGCNA: External Trait Matching
 
 ```{r fig.width = 20, fig.height = 12, dpi = 300}
 #Load necessary packages
@@ -1029,54 +1116,23 @@ labeledHeatmap(
   zlim = c(-1,1),
   main = "Module-Trait Relationships"
 )
-table(net$colors)
 ```
 
-### GO: Load All Necessary Packages
-
-```{r}
-#Installs
-
-my_lib <- "/hpc/home/az199/R/x86_64-pc-linux-gnu-library/4.4"
-if (!dir.exists(my_lib)) dir.create(my_lib, recursive = TRUE)
-.libPaths(c(my_lib, .libPaths()))
-
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager", lib = my_lib)
-}
-
-BiocManager::install(version = "3.20", ask = FALSE, lib = my_lib)
-
-pkgs_needed <- c("dplyr", "dbplyr", "DBI", "RSQLite", "biomaRt", "goseq",
-                  "clusterProfiler", "DESeq2", "AnnotationDbi", "tidyverse")
-
-pkgs_missing <- pkgs_needed[!sapply(pkgs_needed, requireNamespace, quietly = TRUE, lib.loc = my_lib)]
-
-if (length(pkgs_missing) > 0) {
-  BiocManager::install(pkgs_missing, lib = my_lib, update = FALSE, ask = FALSE)
-}
-```
+### GO: Load Packages
 
 ```{r}
 # troubleshooting downloads
-if (!requireNamespace("BiocManager", quietly = TRUE))
+# if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
-BiocManager::install("biomaRt")
+# BiocManager::install("biomaRt")
+# packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 
 # Load Libraries
 library(biomaRt)
-library(DESeq2)
 library(AnnotationDbi)
 library(goseq)
-library(ggplot2)
-library(readr)
-library(dplyr)
-library(stringr)
-library(tidyverse)
-
-packageVersion("dplyr") #encountering issues w/ dyplr and biomaRt
 ```
-### Create connection to ensembl dataset and gene vectors
+### GO: Create Connection to Ensembl Dataset and Gene Vectors
 ```{r}
 # Establish connection to Ensembl genes and RU17 genome dataset
 mart <- useMart("metazoa_mart",
@@ -1102,7 +1158,7 @@ length_vector_ru17 <- gene_lengths_ru17$transcript_length
 names(length_vector_ru17) <- gene_lengths_ru17$ensembl_gene_id
 
 ```
-
+### GO: Common Gene Intersections
 ```{r}
 # ---Create empty list to hold finals ---#
 joined_results <- list()
@@ -1139,12 +1195,10 @@ for (item in all_comps) {
   all_de_vector[[item]] <- sub_DE_genes_vector
 }
 ```
-
-### Running Goseq()
-
-```{r fig.width=10, fig.height=12}
+### GO: Running Goseq()
+```{r}
 # set path
-goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results/"
+goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results_RU17/"
 if(!dir.exists(goseq_out_dir)) dir.create(goseq_out_dir, recursive = TRUE)
 
 # Create loop for each comparison
@@ -1209,8 +1263,6 @@ for (item in all_comps) {
   plot = p,
   width = 8,
   height = 6,
-  dpi = 400
-)
-}
+  dpi = 400)} # save plots
 
 ```
