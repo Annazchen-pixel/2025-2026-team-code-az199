@@ -2,7 +2,9 @@
 title: "24_rnaseq_pipeline_RU25"
 author: "Anna Zhang"
 date: "2026-06-05"
-output: html_document
+output: 
+  pdf_document: default
+  html_document: default
 ---
 
 # Rutgers 2025 Oyster Data Analysis
@@ -76,7 +78,7 @@ coldata <- as.data.frame(coldata_raw)
 
 # set column "Sample_ID" as rownames of coldata
 rownames(coldata) <- coldata$Sample_ID
-View(coldata) # visualize resulting data
+# View(coldata) # visualize resulting data
 
 # check for matching qualities
 all(colnames(count_matrix) == rownames(coldata))
@@ -88,7 +90,7 @@ coldata <- coldata[colnames(count_matrix), ]
 stopifnot(identical(colnames(count_matrix), rownames(coldata)))
 all(colnames(count_matrix) == rownames(coldata)) # matching check - want TRUE
 
-View(coldata) # visualize
+# View(coldata) # visualize
 ```
 
 ### SE: Import and Process Gene Annotations
@@ -437,81 +439,67 @@ ggplot(pcaData, aes(x = PC1, y = PC2, label = Sample_ID)) +
 ### Statistics and Visualizations: Volcano Plot
 
 ```{r fig.width = 10, fig.height = 8}
-# load packages
 library(dplyr)
 library(ggplot2)
-# loop through each differential expression comparison 
+library(tibble)
+
+ru25_volout_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU25_vol_plots/"
+dir.create(ru25_volout_dir, showWarnings = FALSE, recursive = TRUE)
 for (item in all_comps) {
-  res_df <- as.data.frame(get(item)) |> # convert result to data frame
-    tibble::rownames_to_column("gene_id") |> # add gene IDs as a column
+
+  res_df <- as.data.frame(get(item)) |>
+    rownames_to_column("gene_id") |>
+    filter(
+      !is.na(log2FoldChange),
+      !is.na(padj)
+    ) |>
     mutate(
       significant = ifelse(
-        !is.na(padj) & # adjusted pvalue is not missing
-          padj < 0.05 & # adjusted pvalue is not less than 0.05
-          abs(log2FoldChange) >=1,
+        padj < 0.05 & abs(log2FoldChange) >= 1,
         "Significant",
         "Not significant"
       )
     )
-  label_genes <- c("evm.TU.Chr08.2401", "evm.TU.Chr09.2202")
-  label_df <- res_df %>%
-  filter(gene_id %in% label_genes)
+    cat("Contrast:", item, " | rows:", nrow(res_df), "\n")
+    print(summary(res_df$log2FoldChange))
+    print(table(res_df$significant))
+
   p <- ggplot(
     res_df,
     aes(
       x = log2FoldChange,
       y = -log10(padj),
-      color = significant # color points by significance
-    )) +
-    geom_point(alpha = 1, size = 2) +
-    geom_text_repel(
-    data = label_df,
-    aes(label = gene_id),
-    size = 5,
-    fontface = "bold",
-    color = "black",
-    box.padding = 0.5,
-    point.padding = 0.3,
-    max.overlaps = Inf,
-    arrow = arrow(length = unit(0.2, "npc"), type = "closed")
+      color = significant
+    )
   ) +
+    geom_point(size = 1.5, alpha = 0.6) +
     scale_color_manual(
       values = c(
-        "Significant" = "red", 
+        "Significant" = "red",
         "Not significant" = "blue"
       )
     ) +
-    # horizontal threshold line
     geom_hline(
       yintercept = -log10(0.05),
-      linetype = "dashed",
-      color = "black"
+      linetype = "dashed"
     ) +
-    # vertical threshold line
     geom_vline(
-      xintercept = c(-1,1),
-      linetype = "dashed",
-      color = "black"
+      xintercept = c(-1, 1),
+      linetype = "dashed"
     ) +
-    coord_cartesian(
-      xlim = c(-6, 6),
-      ylim = c(0, 8)
-    ) +
+    scale_y_continuous(limits = c(0, 20), oob = scales::squish) +
+    coord_cartesian(xlim = c(-6, 6))+
     theme_bw(base_size = 16) +
-    theme(
-      plot.title = element_text(size = 28, face = "bold", hjust = 0.5),
-      axis.title = element_text(size = 28, face = "bold"),
-      axis.text = element_text(size = 28)
-    ) +
     labs(
       title = paste("Volcano Plot:", sub("^res_", "", item)),
       x = "log2 Fold Change",
-      y = "-log10 adjusted p-value",
+      y = expression(-log[10]("adjusted p-value")),
       color = "Significance"
     )
-
   print(p)
-}
+  ggsave(
+    filename = paste0(ru25_volout_dir, item, ".png"),
+    plot = p, width = 10, height = 8, dpi = 300)}
 ```
 
 ### Statistics and Visualizations: Create Heat Maps and Clustering
@@ -770,7 +758,7 @@ env_master <- ph_avg |>
   left_join(do_avg, by = "CollectionDate") |>
   left_join(temp_avg, by = "CollectionDate")
 
-View(env_master) # visualize resulting data table
+# View(env_master) # visualize resulting data table
 ```
 
 ### Environmental Factors: Extract and Convert PCA Dates from Sample ID
@@ -1080,7 +1068,7 @@ table(unmerged_colors)
 plotDendroAndColors(
   dendro = net$dendrograms[[1]],
   colors = cbind(unmerged_colors, merged_colors),
-  groupLaels = c("Unmerged", "Merged"),
+  groupLabels = c("Unmerged", "Merged"),
   dendroLabels = FALSE, 
   addGuide = TRUE,
   hang = 0.03, 
@@ -1182,7 +1170,9 @@ labeledHeatmap(
   main = "Module-Trait Relationships"
 )
 ```
+
 ### GO: Load Packages
+
 ```{r}
 # troubleshooting downloads
 # if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -1194,7 +1184,9 @@ library(biomaRt)
 library(AnnotationDbi)
 library(goseq)
 ```
+
 ### GO: Matching Genes
+
 ```{r}
 # load and strip gene and protein id from 2017 RU (reference mapping table)
 ru17_gene_protein <- read_csv("/work/clh162/OysterRNA24/DEG_analysis/GO/Cvi_RU17_ncbi_dataset/data/GCF_002022765.2/Cvi_RU17_gene_proteinID.csv",
@@ -1224,7 +1216,9 @@ write_csv(
   "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/joined_gene_ids.csv"
 )
 ```
+
 ### GO: Establish Connection and Filter for Ensembl IDs
+
 ```{r}
 # establish connection to Ensembl genes and RU17 genome dataset
 mart <- useMart("metazoa_mart",
@@ -1250,7 +1244,9 @@ length_vector <- gene_lengths$transcript_length
 names(length_vector) <- gene_lengths$ensembl_gene_id
 
 ```
+
 ### GO: Common Gene Intersections
+
 ```{r}
 # --- create empty list to hold finals ---#
 joined_results <- list()
@@ -1292,7 +1288,9 @@ for (item in all_comps) {
   all_length_vectors[[item]] <- sub_length_vector
   all_de_vector[[item]] <- sub_DE_genes_vector}
 ```
+
 ### GO: Running Goseq()
+
 ```{r}
 # set path
 goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results_RU25/"

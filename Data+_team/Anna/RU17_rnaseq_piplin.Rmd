@@ -2,7 +2,9 @@
 title: "24_rnaseq_piplin_RU17"
 author: "Anna Zhang"
 date: "2026-07-07"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 # Rutgers 2017 Oyster Data Analysis
@@ -23,7 +25,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(stringr)
 library(dplyr)
 
-# read the gene count files
+# read the gene coussnt files
 old_counts <- read.delim("/work/clh162/henry/results/cv2017/featureCounts_counts/counts_matrix.txt", comment.char = "#", check.names = FALSE, row.names = 1 )
 
 # view/check data format to see if need adjustments 
@@ -39,7 +41,7 @@ colnames(old_cmatrix) <- sub("_sorted\\.bam", "", colnames(old_cmatrix))
 colnames(old_cmatrix) <- sub("_S[0-9]+_L[0-9]+$", "", colnames(old_cmatrix))
 
 old_cmatrix <- as.matrix(old_cmatrix)
-View(old_cmatrix)
+#View(old_cmatrix)
 # save old_cmatrix
 write.table(
   old_cmatrix,
@@ -76,7 +78,7 @@ coldata_17 <- as.data.frame(coldata_17_raw)
 
 # set column "Sample_ID" as rownames of coldata_17
 rownames(coldata_17) <- coldata_17$Sample_ID
-View(coldata_17) #visualize resulting data
+#View(coldata_17) #visualize resulting data
 
 # check for matching qualities
 all(colnames(old_cmatrix) == rownames(coldata_17))
@@ -88,7 +90,7 @@ coldata_17 <- coldata_17[colnames(old_cmatrix), ]
 stopifnot(identical(colnames(old_cmatrix), rownames(coldata_17)))
 all(colnames(old_cmatrix) == rownames(coldata_17)) # matching check
 
-View(coldata_17) #Visualize
+# View(coldata_17) #Visualize
 ```
 
 ### SE: Assemble Summarized Experiment
@@ -369,26 +371,34 @@ ggplot(pcaData, aes(x = PC1, y = PC2, label = Sample_ID)) +
   coord_fixed() +
   scale_color_manual(values = c(Jun = "red", Jul = "orange", Aug = "yellow"))
 ```
-
 ### Statistics and Visualizations: Volcano Plot
 
 ```{r fig.width = 10, fig.height = 8}
-# load packages
 library(dplyr)
 library(ggplot2)
-# loop through each differential expression comparison 
+library(tibble)
+
+ru17_volout_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/RU17_vol_plots/"
+dir.create(ru17_volout_dir, showWarnings = FALSE, recursive = TRUE)
 for (item in all_comps) {
-  res_df <- as.data.frame(get(item)) |> # convert result to data frame
-    tibble::rownames_to_column("gene_id") |> # add gene IDs as a column
+
+  res_df <- as.data.frame(get(item)) |>
+    rownames_to_column("gene_id") |>
+    filter(
+      !is.na(log2FoldChange),
+      !is.na(padj)
+    ) |>
     mutate(
       significant = ifelse(
-        !is.na(padj) & # adjusted pvalue is not missing
-          padj < 0.05 & # adjusted pvalue is not less than 0.05
-          abs(log2FoldChange) >=1,
+        padj < 0.05 & abs(log2FoldChange) >= 1,
         "Significant",
         "Not significant"
       )
     )
+    cat("Contrast:", item, " | rows:", nrow(res_df), "\n")
+    print(summary(res_df$log2FoldChange))
+    print(table(res_df$significant))
+
   p <- ggplot(
     res_df,
     aes(
@@ -397,55 +407,34 @@ for (item in all_comps) {
       color = significant
     )
   ) +
-    geom_point(alpha = 1, size = 2) +
-    geom_text_repel(
-    data = label_df,
-    aes(label = gene_id),
-    size = 5,
-    fontface = "bold",
-    color = "black",
-    box.padding = 0.5,
-    point.padding = 0.3,
-    max.overlaps = Inf,
-    arrow = arrow(length = unit(0.2, "npc"), type = "closed")
-  ) +
+    geom_point(size = 1.5, alpha = 0.6) +
     scale_color_manual(
       values = c(
-        "Significant" = "red", 
+        "Significant" = "red",
         "Not significant" = "blue"
       )
     ) +
-    # horizontal threshold line
     geom_hline(
       yintercept = -log10(0.05),
-      linetype = "dashed",
-      color = "black"
+      linetype = "dashed"
     ) +
-    # vertical threshold line
     geom_vline(
-      xintercept = c(-1,1),
-      linetype = "dashed",
-      color = "black"
+      xintercept = c(-1, 1),
+      linetype = "dashed"
     ) +
-    coord_cartesian(
-      xlim = c(-6, 6),
-      ylim = c(0, 8)
-    ) +
+    scale_y_continuous(limits = c(0, 20), oob = scales::squish) +
+    coord_cartesian(xlim = c(-6, 6))+
     theme_bw(base_size = 16) +
-    theme(
-      plot.title = element_text(size = 28, face = "bold", hjust = 0.5),
-      axis.title = element_text(size = 28, face = "bold"),
-      axis.text = element_text(size = 28)
-    ) +
     labs(
       title = paste("Volcano Plot:", sub("^res_", "", item)),
       x = "log2 Fold Change",
-      y = "-log10 adjusted p-value",
+      y = expression(-log[10]("adjusted p-value")),
       color = "Significance"
     )
-
   print(p)
-}
+  ggsave(
+    filename = paste0(ru17_volout_dir, item, ".png"),
+    plot = p, width = 10, height = 8, dpi = 300)}
 ```
 
 ### Statistics and Visualizations: Create Heat Maps and Clustering
@@ -701,7 +690,7 @@ env_master <- ph_avg |>
   left_join(salin_avg, by = "CollectionDate") |>
   left_join(do_avg, by = "CollectionDate") |>
   left_join(temp_avg, by = "CollectionDate")
-View(env_master) # Visualize resulting data table
+# View(env_master) # Visualize resulting data table
 ```
 
 ### Environmental Factors: Extract and Convert PCA Dates from Sample ID
@@ -979,9 +968,9 @@ net <- blockwiseModules(
   power = softPower, 
   networkType = "signed",
   minModuleSize = 50, 
-  maxBlockSize = 10000,
+  maxBlockSize = 15000,
   detectCutHeight = 0.995,
-  deepSplit = 2, 
+  deepSplit = 1, 
   mergeCutHeight = 0.25,
   numericLabels = TRUE, 
   pamRespectsDendro = FALSE,
@@ -1012,7 +1001,7 @@ table(unmerged_colors)
 plotDendroAndColors(
   dendro = net$dendrograms[[1]],
   colors = cbind(unmerged_colors, merged_colors),
-  groupLaels = c("Unmerged", "Merged"),
+  groupLabels = c("Unmerged", "Merged"),
   dendroLabels = FALSE, 
   addGuide = TRUE,
   hang = 0.03, 
@@ -1132,7 +1121,9 @@ library(biomaRt)
 library(AnnotationDbi)
 library(goseq)
 ```
+
 ### GO: Create Connection to Ensembl Dataset and Gene Vectors
+
 ```{r}
 # Establish connection to Ensembl genes and RU17 genome dataset
 mart <- useMart("metazoa_mart",
@@ -1158,7 +1149,9 @@ length_vector_ru17 <- gene_lengths_ru17$transcript_length
 names(length_vector_ru17) <- gene_lengths_ru17$ensembl_gene_id
 
 ```
+
 ### GO: Common Gene Intersections
+
 ```{r}
 # ---Create empty list to hold finals ---#
 joined_results <- list()
@@ -1195,7 +1188,9 @@ for (item in all_comps) {
   all_de_vector[[item]] <- sub_DE_genes_vector
 }
 ```
+
 ### GO: Running Goseq()
+
 ```{r}
 # set path
 goseq_out_dir <- "/work/clh162/Data+/Anna/2025-2026-team-code-az199/Data+_team/Anna/goseq_results_RU17/"
